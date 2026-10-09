@@ -1,0 +1,20 @@
+{
+  "name": "crossplay",
+  "version": "1.0.0",
+  "description": "Paste a Spotify or Apple Music link and get matching Apple Music, Spotify and YouTube Music links, plus share text you can copy.",
+  "homepage": "https://github.com/sammartinez/crossplay#readme",
+  "bugs": {
+    "url": "https://github.com/sammartinez/crossplay/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sammartinez/crossplay.git"
+  },
+  "license": "MIT",
+  "author": "Sam Martinez",
+  "type": "commonjs",
+  "main": "index.html",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}

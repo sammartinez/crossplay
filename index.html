@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Crossplay</title>
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Crossplay">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111317" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* One narrow column: input, then a single result card. */
+:root{
+  --bg:#f4f5f7; --card:#fff; --fg:#16181d; --muted:#6b7080; --line:#e3e5ea;
+  --accent:#d9730d; --ok:#1f8a4c;
+  --sans:"Instrument Sans",system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){[data-theme]:not([data-theme="light"]),:root:not([data-theme]){--bg:#111317;--card:#1a1d22;--fg:#eceef2;--muted:#8d93a1;--line:#2a2e36;--accent:#f39a3d;--ok:#4cc27e;color-scheme:dark}}
+[data-theme="dark"]{--bg:#111317;--card:#1a1d22;--fg:#eceef2;--muted:#8d93a1;--line:#2a2e36;--accent:#f39a3d;--ok:#4cc27e;color-scheme:dark}
+[data-theme="light"]{color-scheme:light}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+main{max-width:520px;margin:0 auto;padding:calc(48px + env(safe-area-inset-top,0px)) 16px calc(64px + env(safe-area-inset-bottom,0px));display:grid;gap:20px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em}
+.sub{margin:2px 0 0;color:var(--muted);font-size:14px}
+button{font:inherit;color:inherit;cursor:pointer}
+.ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:13px;color:var(--muted)}
+.ghost:hover{color:var(--fg)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+form{display:flex;gap:8px}
+input{flex:1;min-width:0;font:13px var(--mono);padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+.primary{border:0;border-radius:10px;padding:0 16px;background:var(--fg);color:var(--bg);font-weight:600}
+.primary:disabled{opacity:.5;cursor:default}
+
+/* crossfader: knob slides while a lookup runs */
+.fader{height:4px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
+.fader::after{content:"";position:absolute;top:0;left:0;width:28%;height:100%;border-radius:2px;background:var(--accent);opacity:0}
+.busy .fader::after{opacity:1;animation:fade 1s ease-in-out infinite alternate}
+@keyframes fade{to{left:72%}}
+@media (prefers-reduced-motion:reduce){.busy .fader::after{animation:none;left:36%}}
+
+.msg{margin:0;color:var(--muted);font-size:14px}
+.msg.err{color:var(--accent)}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:14px}
+.track{display:flex;gap:12px;align-items:center}
+.track img{width:56px;height:56px;border-radius:6px;object-fit:cover;background:var(--line);flex:none}
+.track div{min-width:0}
+.title{font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.artist{color:var(--muted);font-size:14px}
+ul{list-style:none;margin:0;padding:0;display:grid}
+li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+li a{flex:1;color:var(--fg);text-decoration:none;font-weight:500}
+li a:hover{text-decoration:underline}
+.tag{font:11px var(--mono);letter-spacing:.04em;color:var(--muted)}
+.tag.exact{color:var(--ok)}
+.alts{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.alts button{background:none;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--fg)}
+textarea{width:100%;font:12px/1.5 var(--mono);padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);resize:vertical}
+.share{width:100%;padding:12px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:600}
+</style>
+</head>
+<body>
+<main id="app">
+  <header>
+    <div>
+      <h1>Crossplay</h1>
+      <p class="sub">Paste a Spotify or Apple Music link. Get it everywhere.</p>
+    </div>
+    <button class="ghost" id="theme" type="button">Theme</button>
+  </header>
+
+  <form id="form">
+    <input id="url" type="url" placeholder="https://open.spotify.com/track/…" autocomplete="off" required>
+    <button class="primary" id="go">Convert</button>
+  </form>
+  <div class="fader" aria-hidden="true"></div>
+  <p class="msg" id="msg" role="status"></p>
+
+  <section class="card" id="result" hidden>
+    <div class="track">
+      <img id="art" alt="">
+      <div><div class="title" id="title"></div><div class="artist" id="artist"></div></div>
+    </div>
+    <ul id="links"></ul>
+    <div class="alts" id="alts" hidden></div>
+    <button class="share" id="share" type="button">Copy share text</button>
+    <textarea id="fallback" rows="5" readonly hidden aria-label="Text to copy"></textarea>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const PLATFORMS = [['apple','Apple Music'],['spotify','Spotify'],['ytm','YouTube Music']];
+let state = null;
+
+/* ---------- theme: follows system, button overrides ---------- */
+function setTheme(t){
+  for (const el of [document.documentElement, document.body]) t ? el.setAttribute('data-theme', t) : el.removeAttribute('data-theme');
+  try { t ? localStorage.setItem('cp-theme', t) : localStorage.removeItem('cp-theme'); } catch {}
+}
+try { setTheme(localStorage.getItem('cp-theme')); } catch {}
+$('theme').onclick = () => {
+  const cur = document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  setTheme(cur === 'dark' ? 'light' : 'dark');
+};
+
+/* ---------- link parsing ---------- */
+function parse(raw){
+  let u; try { u = new URL(raw.trim()); } catch { return null; }
+  const parts = u.pathname.split('/').filter(Boolean);
+  if (/(^|\.)spotify\.(com|link)$/.test(u.hostname)) {
+    const i = parts.findIndex(p => p === 'track' || p === 'album');
+    if (i < 0) return u.hostname.endsWith('spotify.link') ? { src:'spotify', link:u.href } : null;
+    const kind = parts[i], id = parts[i+1];
+    return { src:'spotify', kind, id, link:`https://open.spotify.com/${kind}/${id}` };
+  }
+  if (u.hostname === 'music.apple.com') {
+    const song = u.searchParams.get('i');
+    const kind = song || parts.includes('song') ? 'track' : parts.includes('album') ? 'album' : null;
+    if (!kind) return null;
+    const id = song || parts[parts.length-1];
+    const slug = (parts[parts.length-2] || '').replace(/-/g,' ');
+    return { src:'apple', kind, id, slug, link:u.origin + u.pathname + (song ? `?i=${song}` : '') };
+  }
+  return null;
+}
+
+/* ---------- lookups ---------- */
+const search = {
+  spotify: q => 'https://open.spotify.com/search/' + encodeURIComponent(q),
+  apple:   q => 'https://music.apple.com/us/search?term=' + encodeURIComponent(q),
+  ytm:     q => 'https://music.youtube.com/search?q=' + encodeURIComponent(q),
+};
+
+function jsonp(url){
+  return new Promise((resolve, reject) => {
+    const cb = 'cp' + Math.random().toString(36).slice(2), s = document.createElement('script');
+    const done = () => { clearTimeout(t); delete window[cb]; s.remove(); };
+    const t = setTimeout(() => { done(); reject(new Error('timeout')); }, 8000);
+    window[cb] = d => { done(); resolve(d); };
+    s.onerror = () => { done(); reject(new Error('network')); };
+    s.src = url + '&callback=' + cb;
+    document.head.appendChild(s);
+  });
+}
+
+// Primary: Odesli gives exact links on every platform in one call.
+async function viaOdesli(p){
+  const r = await fetch('https://api.song.link/v1-alpha.1/links?userCountry=US&url=' + encodeURIComponent(p.link));
+  if (!r.ok) throw new Error('odesli ' + r.status);
+  const d = await r.json(), e = d.entitiesByUniqueId?.[d.entityUniqueId] || {}, L = d.linksByPlatform || {};
+  return { title:e.title, artist:e.artistName, art:e.thumbnailUrl,
+           links:{ apple:L.appleMusic?.url, spotify:L.spotify?.url, ytm:L.youtubeMusic?.url } };
+}
+
+// Fallback: no third party. Exact link for the source, search links for the rest.
+async function viaApple(p){
+  const entity = p.kind === 'album' ? 'album' : 'song';
+  const d = await jsonp(`https://itunes.apple.com/lookup?id=${p.id}&entity=${entity}&country=us`).catch(() => null);
+  const it = d?.results?.[0];
+  return { title: it?.trackName || it?.collectionName || titleCase(p.slug), artist: it?.artistName || '',
+           art: it?.artworkUrl100?.replace('100x100','300x300'), links:{ apple:p.link } };
+}
+async function viaSpotify(p){
+  const o = await fetch('https://open.spotify.com/oembed?url=' + encodeURIComponent(p.link)).then(r => r.json());
+  if (!p.kind) { // spotify.link short link: oEmbed's player URL carries the real track/album ID
+    const m = (o.iframe_url || o.html || '').match(/embed\/(track|album)\/([A-Za-z0-9]+)/);
+    if (!m) throw new Error('short link');
+    Object.assign(p, { kind:m[1], id:m[2], link:`https://open.spotify.com/${m[1]}/${m[2]}` });
+  }
+  const entity = p.kind === 'album' ? 'album' : 'song';
+  const d = await jsonp(`https://itunes.apple.com/search?term=${encodeURIComponent(o.title)}&entity=${entity}&limit=5&country=us`).catch(() => null);
+  const alts = (d?.results || []).map(r => ({ title:r.trackName || r.collectionName, artist:r.artistName,
+    url:(r.trackViewUrl || r.collectionViewUrl || '').replace('itunes.apple.com','music.apple.com').split('&uo=')[0] }));
+  const top = alts[0];
+  return { title:o.title, artist: top?.artist || '', art:o.thumbnail_url,
+           links:{ spotify:p.link, apple: top?.url }, alts };
+}
+
+const titleCase = s => (s || '').replace(/\b\w/g, c => c.toUpperCase());
+
+let runId = 0, lastLink = null;
+async function convert(raw){
+  const p = parse(raw);
+  if (!p) return show('That link isn’t a Spotify or Apple Music track or album.', true);
+  if (p.link === lastLink && $('app').classList.contains('busy')) return; // paste + Convert on the same link
+  const id = ++runId; lastLink = p.link;
+  $('app').classList.add('busy'); $('go').disabled = true; show('Looking it up…');
+  let res;
+  try { res = await viaOdesli(p); }
+  catch { try { res = p.src === 'apple' ? await viaApple(p) : await viaSpotify(p); } catch { res = null; } }
+  if (id !== runId) return; // a newer lookup started; drop this result
+  $('app').classList.remove('busy'); $('go').disabled = false;
+  if (!res || !res.title) return show(p.src === 'spotify' && !p.kind
+    ? 'Couldn’t open that short link. In Spotify, tap Share → Copy link, then paste the full open.spotify.com link.'
+    : 'Couldn’t find that one. Check the link and try again.', true);
+  res.exact = {};
+  const q = [res.title, res.artist].filter(Boolean).join(' ');
+  for (const [k] of PLATFORMS) { res.exact[k] = !!res.links[k]; res.links[k] ||= search[k](q); }
+  state = res; render(); show('');
+  try { history.replaceState(null, '', '?u=' + encodeURIComponent(p.link)); } catch {}
+}
+
+/* ---------- UI ---------- */
+function show(text, err){ $('msg').textContent = text; $('msg').className = 'msg' + (err ? ' err' : ''); if (err) $('result').hidden = true; }
+
+function render(){
+  const s = state;
+  $('title').textContent = s.title; $('artist').textContent = s.artist;
+  $('art').src = s.art || ''; $('art').hidden = !s.art;
+  $('links').replaceChildren(...PLATFORMS.map(([k, name]) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<a target="_blank" rel="noopener"></a><span class="tag"></span><button class="ghost" type="button">Copy</button>`;
+    li.querySelector('a').href = s.links[k]; li.querySelector('a').textContent = name;
+    const tag = li.querySelector('.tag'); tag.textContent = s.exact[k] ? 'EXACT' : 'SEARCH'; tag.classList.toggle('exact', s.exact[k]);
+    li.querySelector('button').onclick = e => copy(s.links[k], e.target);
+    return li;
+  }));
+  const alts = (s.alts || []).slice(1);
+  $('alts').hidden = !alts.length;
+  $('alts').replaceChildren(...(alts.length ? [Object.assign(document.createElement('span'), { textContent:'Wrong Apple match?' })] : []),
+    ...alts.map(a => { const b = document.createElement('button'); b.type = 'button';
+      b.textContent = `${a.title} · ${a.artist}`;
+      b.onclick = () => { s.links.apple = a.url; s.exact.apple = true; s.artist = a.artist; s.alts = [a, ...s.alts.filter(x => x !== a)]; render(); };
+      return b; }));
+  $('result').hidden = false;
+}
+
+async function copy(text, btn){
+  const label = btn.textContent, box = $('fallback');
+  box.hidden = true;
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; }
+  catch {
+    // Clipboard API blocked: try the old select-and-copy, else leave the text selected for a manual copy
+    box.value = text; box.hidden = false; box.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch {}
+    if (ok) { box.hidden = true; btn.textContent = 'Copied'; }
+    else { btn.textContent = 'Copy it below'; box.focus(); }
+  }
+  setTimeout(() => btn.textContent = label, 1400);
+}
+
+$('share').onclick = e => {
+  const s = state, head = s.artist ? `${s.title} — ${s.artist}` : s.title;
+  copy(`${head}\n\nApple Music: ${s.links.apple}\nSpotify: ${s.links.spotify}\nYouTube Music: ${s.links.ytm}`, e.target);
+};
+$('form').onsubmit = e => { e.preventDefault(); convert($('url').value); };
+$('url').addEventListener('paste', () => setTimeout(() => convert($('url').value)));
+
+// ?u=<link> auto-converts (used by the iOS Shortcut and shared Crossplay links)
+const u = new URLSearchParams(location.search).get('u');
+if (u) { $('url').value = u; convert(u); }
+</script>
+</body>
+</html>
