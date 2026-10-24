@@ -1,0 +1,47 @@
+{
+  "resultCount": 3,
+  "results": [
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 3296287,
+      "collectionId": 1440806041,
+      "trackId": 1440806768,
+      "artistName": "Queen",
+      "collectionName": "A Night At The Opera (2011 Remaster)",
+      "trackName": "Bohemian Rhapsody",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/100x100bb.jpg",
+      "country": "USA"
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 3296287,
+      "collectionId": 1440650428,
+      "trackId": 1440650711,
+      "artistName": "Queen",
+      "collectionName": "Bohemian Rhapsody (The Original Soundtrack)",
+      "trackName": "Bohemian Rhapsody (Live Aid)",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody-live-aid/1440650428?i=1440650711&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody-live-aid/1440650428?i=1440650711&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/aa/bb/cc/aabbcc/source/100x100bb.jpg",
+      "country": "USA"
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 5040714,
+      "collectionId": 1564530719,
+      "trackId": 1564530724,
+      "artistName": "The Petersens",
+      "collectionName": "Bluegrass Covers",
+      "trackName": "Bohemian Rhapsody",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody/1564530719?i=1564530724&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody/1564530719?i=1564530724&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/dd/ee/ff/ddeeff/source/100x100bb.jpg",
+      "country": "USA"
+    }
+  ]
+}

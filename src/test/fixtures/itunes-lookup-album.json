@@ -1,0 +1,23 @@
+{
+  "resultCount": 1,
+  "results": [
+    {
+      "wrapperType": "collection",
+      "collectionType": "Album",
+      "artistId": 3296287,
+      "collectionId": 1440806041,
+      "artistName": "Queen",
+      "collectionName": "A Night At The Opera (2011 Remaster)",
+      "collectionCensoredName": "A Night At The Opera (2011 Remaster)",
+      "artistViewUrl": "https://music.apple.com/us/artist/queen/3296287?uo=4",
+      "collectionViewUrl": "https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041?uo=4",
+      "artworkUrl60": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/60x60bb.jpg",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/100x100bb.jpg",
+      "trackCount": 12,
+      "country": "USA",
+      "currency": "USD",
+      "releaseDate": "1975-11-21T08:00:00Z",
+      "primaryGenreName": "Rock"
+    }
+  ]
+}
