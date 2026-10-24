@@ -20,6 +20,7 @@ import {
   ODESLI_COUNTRY,
   ODESLI_COUNTRY_PARAM,
   ODESLI_HOP_PLATFORMS,
+  ODESLI_PLATFORM_KEYS,
   ODESLI_URL_PARAM,
   OEMBED_URL_PARAM,
   PLATFORMS,
@@ -27,13 +28,14 @@ import {
   SPOTIFY_OEMBED_URL,
 } from '../constants'
 import { spotifyParsedLink } from './links'
-import { titleCase } from './text'
+import { sameText, titleCase } from './text'
 import { withParams } from './url'
 import type {
   ArtistCandidate,
   ItunesResponse,
   Kind,
   Lookup,
+  OdesliEntity,
   OdesliResponse,
   ParsedLink,
   SpotifyOembed,
@@ -45,18 +47,18 @@ const itunesEntity = (kind?: Kind): string =>
 export const odesliUrl = (link: string): string =>
   withParams(ODESLI_API_URL, { [ODESLI_COUNTRY_PARAM]: ODESLI_COUNTRY, [ODESLI_URL_PARAM]: link })
 
+const odesliEntity = (body: OdesliResponse, id?: string): OdesliEntity | undefined =>
+  id ? body.entitiesByUniqueId?.[id] : undefined
+
 export function fromOdesli(body: OdesliResponse): Lookup {
-  const entity = body.entityUniqueId ? body.entitiesByUniqueId?.[body.entityUniqueId] : undefined
-  const platformLinks = body.linksByPlatform
+  const entity = odesliEntity(body, body.entityUniqueId)
   return {
     title: entity?.title,
     artist: entity?.artistName,
     art: entity?.thumbnailUrl,
-    links: {
-      apple: platformLinks?.appleMusic?.url,
-      spotify: platformLinks?.spotify?.url,
-      ytm: platformLinks?.youtubeMusic?.url,
-    },
+    links: Object.fromEntries(
+      PLATFORMS.map(({ key }) => [key, body.linksByPlatform?.[ODESLI_PLATFORM_KEYS[key]]?.url]),
+    ),
   }
 }
 
@@ -67,9 +69,23 @@ export function odesliHopUrl(body: OdesliResponse): string | null {
   return source ? odesliUrl(source) : null
 }
 
-export function withHopLinks(first: Lookup, hop: Lookup): Lookup {
+// Artists are compared only when both are known; a title match alone is
+// enough when one side has no artist.
+function sameSong(first: Lookup, entity?: OdesliEntity): boolean {
+  if (!first.title || !entity?.title || !sameText(first.title, entity.title)) return false
+  return !first.artist || !entity.artistName || sameText(first.artist, entity.artistName)
+}
+
+// Each link is judged by its own entity, not the hop's main one: for a YouTube
+// source that is a video whose artist is a channel name ("X - Topic").
+export function withHopLinks(first: Lookup, hop: OdesliResponse): Lookup {
   const links = { ...first.links }
-  for (const { key } of PLATFORMS) links[key] ||= hop.links[key]
+  for (const { key } of PLATFORMS) {
+    const hopLink = hop.linksByPlatform?.[ODESLI_PLATFORM_KEYS[key]]
+    if (!links[key] && hopLink && sameSong(first, odesliEntity(hop, hopLink.entityUniqueId))) {
+      links[key] = hopLink.url
+    }
+  }
   return { ...first, links }
 }
 

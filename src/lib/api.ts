@@ -91,7 +91,7 @@ async function viaSource(parsed: ParsedLink): Promise<SourceLookup> {
 // and links, and the platforms the hop would fill fall back to searches.
 const withOdesliHop = (first: Lookup, hopUrl: string): Promise<Lookup> =>
   fetchJson<OdesliResponse>(hopUrl)
-    .then((hop) => withHopLinks(first, fromOdesli(hop)))
+    .then((hop) => withHopLinks(first, hop))
     .catch(() => first)
 
 async function viaOdesliOrSource(parsed: ParsedLink): Promise<SourceLookup> {

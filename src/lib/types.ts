@@ -2,6 +2,7 @@ import type {
   KIND_ALBUM,
   KIND_TRACK,
   ODESLI_HOP_PLATFORMS,
+  ODESLI_PLATFORM_KEYS,
   PLATFORM_APPLE,
   PLATFORM_SPOTIFY,
   PLATFORMS,
@@ -36,16 +37,16 @@ export type Conversion = Lookup & {
 
 // Response shapes below list only the fields the mappers read.
 
-type OdesliEntity = { title?: string; artistName?: string; thumbnailUrl?: string }
-type OdesliPlatformLink = { url: string }
+export type OdesliEntity = { title?: string; artistName?: string; thumbnailUrl?: string }
+type OdesliPlatformLink = { url: string; entityUniqueId?: string }
+type OdesliPlatform =
+  | (typeof ODESLI_PLATFORM_KEYS)[Platform]
+  | (typeof ODESLI_HOP_PLATFORMS)[number]
 
 export type OdesliResponse = {
   entityUniqueId?: string
   entitiesByUniqueId?: Record<string, OdesliEntity>
-  linksByPlatform?: {
-    appleMusic?: OdesliPlatformLink
-    spotify?: OdesliPlatformLink
-  } & Partial<Record<(typeof ODESLI_HOP_PLATFORMS)[number], OdesliPlatformLink>>
+  linksByPlatform?: Partial<Record<OdesliPlatform, OdesliPlatformLink>>
 }
 
 type ItunesResult = {

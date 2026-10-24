@@ -45,6 +45,12 @@ export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
 export const ODESLI_COUNTRY = 'US'
 export const ODESLI_COUNTRY_PARAM = 'userCountry'
 export const ODESLI_URL_PARAM = 'url'
+// The linksByPlatform key Odesli uses for each of our platforms.
+export const ODESLI_PLATFORM_KEYS = {
+  [PLATFORM_APPLE]: 'appleMusic',
+  [PLATFORM_SPOTIFY]: 'spotify',
+  [PLATFORM_YTM]: 'youtubeMusic',
+} as const
 // Hop sources in the order Odesli matches them best to other platforms. Never
 // appleMusic or spotify: those are the links a hop fills.
 export const ODESLI_HOP_PLATFORMS = ['youtubeMusic', 'youtube', 'deezer', 'tidal', 'amazonMusic'] as const
@@ -68,6 +74,8 @@ export const ARTWORK_SIZE_LARGE = '300x300'
 
 export const WORD_SEPARATOR = ' '
 export const WORD_START_RE = /\b\w/g
+export const PUNCTUATION_RE = /\p{P}/gu
+export const WHITESPACE_RUN_RE = /\s+/g
 export const LINE_BREAK = '\n'
 export const TITLE_ARTIST_SEPARATOR = ' — '
 export const SHARE_LABEL_SEPARATOR = ': '
