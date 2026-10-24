@@ -97,3 +97,14 @@ export const TAG_EXACT = 'EXACT'
 export const TAG_SEARCH = 'SEARCH'
 export const WRONG_MATCH_LABEL = 'Wrong Apple match?'
 export const ALT_SEPARATOR = ' · '
+
+export const COPY_COMMAND = 'copy'
+export const COPY_RESULT_COPIED = 'copied'
+export const COPY_RESULT_MANUAL = 'manual'
+export const COPY_RESET_MS = 1400
+export const COPY_LABEL = 'Copy'
+export const COPIED_LABEL = 'Copied'
+export const COPY_MANUAL_LABEL = 'Copy it below'
+export const SHARE_LABEL = 'Copy share text'
+export const FALLBACK_TEXTAREA_LABEL = 'Text to copy'
+export const FALLBACK_TEXTAREA_ROWS = 5

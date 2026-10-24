@@ -1,11 +1,22 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ResultCard from './ResultCard'
 import { withSearchFallbacks } from '../lib/links'
 import type { AppleAlt } from '../lib/types'
-import { expectNotShown, resultRow as row } from '../test/dom'
+import {
+  FALLBACK_LABEL,
+  RESET_MS,
+  advance,
+  clickAndSettle,
+  expectedShareText,
+  selectedText,
+  stubClipboard,
+  stubExecCommand,
+} from '../test/clipboard'
+import { expectNotShown, isShown, resultRow as row } from '../test/dom'
 
-// AC11 (result card) and AC12 (alternates), from a Conversion prop.
+// AC11 (result card), AC12 (alternates) and AC13 (copy and share), from a
+// Conversion prop.
 
 const ALTS: AppleAlt[] = [
   { title: 'Song', artist: 'First Artist', url: 'https://music.apple.com/us/album/song/1?i=11' },
@@ -91,5 +102,161 @@ describe('ResultCard', () => {
   it('hides the alternates block with no matches', () => {
     renderCard({ ...CONVERSION, alts: undefined })
     expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
+  })
+
+  describe('copy and share', () => {
+    const SHARE_TEXT = expectedShareText('Song — First Artist', CONVERSION.links)
+
+    const rowCopyButton = (name: string) => within(row(name)).getByRole('button')
+    const shareButton = () => screen.getByRole('button', { name: 'Copy share text' })
+    const fallback = () => screen.getByLabelText(FALLBACK_LABEL) as HTMLTextAreaElement
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    it('gives each platform row a Copy button', () => {
+      renderCard()
+      for (const name of ['Apple Music', 'Spotify', 'YouTube Music']) {
+        expect(rowCopyButton(name).textContent).toBe('Copy')
+      }
+    })
+
+    it.each([
+      ['Apple Music', CONVERSION.links.apple],
+      ['Spotify', CONVERSION.links.spotify],
+      ['YouTube Music', CONVERSION.links.ytm],
+    ])('copies the %s link from its row', async (name, href) => {
+      const writeText = stubClipboard('ok')
+      renderCard()
+      await clickAndSettle(rowCopyButton(name))
+      expect(writeText).toHaveBeenCalledTimes(1)
+      expect(writeText).toHaveBeenCalledWith(href)
+    })
+
+    it('reads "Copied" on the clicked row only', async () => {
+      stubClipboard('ok')
+      renderCard()
+      const spotifyButton = rowCopyButton('Spotify')
+      await clickAndSettle(spotifyButton)
+      expect(spotifyButton.textContent).toBe('Copied')
+      expect(rowCopyButton('Apple Music').textContent).toBe('Copy')
+      expect(rowCopyButton('YouTube Music').textContent).toBe('Copy')
+    })
+
+    it('sets the row button back to "Copy" after 1.4 s', async () => {
+      stubClipboard('ok')
+      renderCard()
+      const spotifyButton = rowCopyButton('Spotify')
+      await clickAndSettle(spotifyButton)
+      await advance(RESET_MS - 1)
+      expect(spotifyButton.textContent).toBe('Copied')
+      await advance(1)
+      expect(spotifyButton.textContent).toBe('Copy')
+    })
+
+    it('shows a "Copy share text" button with the share class', () => {
+      renderCard()
+      expect(shareButton()).toHaveClass('share')
+    })
+
+    it('copies "<title> — <artist>" and one line per platform as share text', async () => {
+      const writeText = stubClipboard('ok')
+      renderCard()
+      await clickAndSettle(shareButton())
+      expect(writeText).toHaveBeenCalledWith(SHARE_TEXT)
+    })
+
+    it('starts the share text with the title alone when the artist is empty', async () => {
+      const writeText = stubClipboard('ok')
+      renderCard({ ...CONVERSION, artist: '' })
+      await clickAndSettle(shareButton())
+      expect(writeText).toHaveBeenCalledWith(expectedShareText('Song', CONVERSION.links))
+    })
+
+    it('reads "Copied" on the share button, then "Copy share text" after 1.4 s', async () => {
+      stubClipboard('ok')
+      renderCard()
+      const button = shareButton()
+      await clickAndSettle(button)
+      expect(button.textContent).toBe('Copied')
+      await advance(RESET_MS)
+      expect(button.textContent).toBe('Copy share text')
+    })
+
+    it('has a read-only fallback textarea labelled "Text to copy", hidden until needed', () => {
+      renderCard()
+      expect(fallback()).toHaveAttribute('readonly')
+      expectNotShown(fallback())
+    })
+
+    it('keeps the fallback textarea hidden when the clipboard copy works', async () => {
+      stubClipboard('ok')
+      renderCard()
+      await clickAndSettle(shareButton())
+      expectNotShown(fallback())
+    })
+
+    it('copies the share text with execCommand from the textarea when the clipboard is blocked', async () => {
+      stubClipboard('blocked')
+      const execCommand = stubExecCommand('ok')
+      renderCard()
+      await clickAndSettle(shareButton())
+      expect(execCommand).toHaveBeenCalledWith('copy')
+      expect(execCommand.selected).toEqual([SHARE_TEXT])
+    })
+
+    it('reads "Copied" and hides the textarea when execCommand copies', async () => {
+      stubClipboard('blocked')
+      stubExecCommand('ok')
+      renderCard()
+      const button = shareButton()
+      await clickAndSettle(button)
+      expect(button.textContent).toBe('Copied')
+      expectNotShown(fallback())
+    })
+
+    it('shows the textarea with the text selected and focused when execCommand fails', async () => {
+      stubClipboard('blocked')
+      stubExecCommand('refused')
+      renderCard()
+      await clickAndSettle(shareButton())
+      const box = fallback()
+      expect(isShown(box)).toBe(true)
+      expect(box).toHaveValue(SHARE_TEXT)
+      expect(selectedText(box)).toBe(SHARE_TEXT)
+      expect(box).toHaveFocus()
+    })
+
+    it('reads "Copy it below" when execCommand fails', async () => {
+      stubClipboard('blocked')
+      stubExecCommand('refused')
+      renderCard()
+      const button = shareButton()
+      await clickAndSettle(button)
+      expect(button.textContent).toBe('Copy it below')
+    })
+
+    it('shows the row link in the textarea when a row copy falls back to manual', async () => {
+      stubClipboard('blocked')
+      stubExecCommand('throws')
+      renderCard()
+      const spotifyButton = rowCopyButton('Spotify')
+      await clickAndSettle(spotifyButton)
+      expect(spotifyButton.textContent).toBe('Copy it below')
+      expect(isShown(fallback())).toBe(true)
+      expect(selectedText(fallback())).toBe(CONVERSION.links.spotify)
+    })
+
+    it('hides the textarea again when a later copy works', async () => {
+      const writeText = stubClipboard('blocked')
+      stubExecCommand('refused')
+      renderCard()
+      await clickAndSettle(shareButton())
+      expect(isShown(fallback())).toBe(true)
+      writeText.mockResolvedValue(undefined)
+      await clickAndSettle(rowCopyButton('Spotify'))
+      expectNotShown(fallback())
+    })
   })
 })
