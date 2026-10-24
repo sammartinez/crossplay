@@ -9,6 +9,7 @@ import {
   type Deferred,
   type FetchAnswer,
   type JsonpLoad,
+  answerJson,
   deferred,
   failsToFetch,
   fetchedUrls,
@@ -40,11 +41,6 @@ const APPLE_ALBUM_LINK = 'https://music.apple.com/us/album/a-night-at-the-opera-
 const SHORT_LINK = 'https://spotify.link/aBcD1234'
 
 const sharedLink = () => new URLSearchParams(window.location.search).get('u')
-
-const answer =
-  (body: unknown, status = 200): FetchAnswer =>
-  () =>
-    jsonResponse(body, status)
 
 // iTunes search answers albums for an album search and songs otherwise.
 const itunesSearch = (src: string) => ({
@@ -134,7 +130,7 @@ describe('useConversion', () => {
 
   describe('on success', () => {
     it('is done with the conversion, an empty message and no error', async () => {
-      spotifyCase(SPOTIFY_TRACK.link, answer(fixture('spotify-oembed-track.json')))
+      spotifyCase(SPOTIFY_TRACK.link, answerJson(fixture('spotify-oembed-track.json')))
       const { result } = await convertAndSettle(SPOTIFY_TRACK_RAW)
       expect(result.current.status).toBe('done')
       expect(result.current.conversion).toEqual(SPOTIFY_TRACK_RESULT())
@@ -143,7 +139,7 @@ describe('useConversion', () => {
     })
 
     it('makes one oEmbed request and one iTunes search for a Spotify link', async () => {
-      const { fetchMock, loads } = spotifyCase(SPOTIFY_TRACK.link, answer(fixture('spotify-oembed-track.json')))
+      const { fetchMock, loads } = spotifyCase(SPOTIFY_TRACK.link, answerJson(fixture('spotify-oembed-track.json')))
       await convertAndSettle(SPOTIFY_TRACK_RAW)
       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
       expect(loads).toHaveLength(1)
@@ -161,7 +157,7 @@ describe('useConversion', () => {
     })
 
     it('replaces the page URL with ?u=<canonical link>', async () => {
-      spotifyCase(SPOTIFY_TRACK.link, answer(fixture('spotify-oembed-track.json')))
+      spotifyCase(SPOTIFY_TRACK.link, answerJson(fixture('spotify-oembed-track.json')))
       const historyLength = window.history.length
       await convertAndSettle(SPOTIFY_TRACK_RAW)
       expect(sharedLink()).toBe(SPOTIFY_TRACK.link)
@@ -169,7 +165,7 @@ describe('useConversion', () => {
     })
 
     it('shares the resolved canonical link for a short link', async () => {
-      spotifyCase(SHORT_LINK, answer(fixture('spotify-oembed-track.json')))
+      spotifyCase(SHORT_LINK, answerJson(fixture('spotify-oembed-track.json')))
       const { result } = await convertAndSettle(SHORT_LINK)
       expect(result.current.status).toBe('done')
       expect(sharedLink()).toBe(SPOTIFY_TRACK.link)
@@ -178,7 +174,7 @@ describe('useConversion', () => {
 
   describe('on failure', () => {
     it('shows the short-link message when a spotify.link URL could not be resolved', async () => {
-      spotifyCase(SHORT_LINK, answer(fixture('spotify-oembed-no-player.json')))
+      spotifyCase(SHORT_LINK, answerJson(fixture('spotify-oembed-no-player.json')))
       const { result } = await convertAndSettle(SHORT_LINK)
       expect(result.current.status).toBe('error')
       expect(result.current.isError).toBe(true)
@@ -196,14 +192,29 @@ describe('useConversion', () => {
     })
 
     it('shows the not-found message after one request when oEmbed answers non-OK', async () => {
-      const { fetchMock } = spotifyCase(SPOTIFY_TRACK.link, answer({}, 404))
+      const { fetchMock } = spotifyCase(SPOTIFY_TRACK.link, answerJson({}, 404))
       const { result } = await convertAndSettle(SPOTIFY_TRACK_RAW)
       expect(result.current.message).toBe(NOT_FOUND_MESSAGE)
       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
     })
 
+    // MR-011 N2 / PLAN-004 AC6: a blank oEmbed title is not a result.
+    it('shows the not-found message, with no iTunes search, when the oEmbed title is blank', async () => {
+      const { fetchMock, loads } = spotifyCase(
+        SPOTIFY_TRACK.link,
+        answerJson({ ...fixture<object>('spotify-oembed-track.json'), title: '' }),
+      )
+      const { result } = await convertAndSettle(SPOTIFY_TRACK_RAW)
+      expect(result.current.status).toBe('error')
+      expect(result.current.isError).toBe(true)
+      expect(result.current.message).toBe(NOT_FOUND_MESSAGE)
+      expect(result.current.conversion).toBeNull()
+      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+      expect(loads).toHaveLength(0)
+    })
+
     it('leaves the page URL unchanged', async () => {
-      spotifyCase(SPOTIFY_TRACK.link, answer({}, 404))
+      spotifyCase(SPOTIFY_TRACK.link, answerJson({}, 404))
       await convertAndSettle(SPOTIFY_TRACK_RAW)
       expect(sharedLink()).toBeNull()
     })
@@ -346,7 +357,7 @@ describe('useConversion', () => {
 
     async function convertedWithCandidates() {
       mockFetchOnly({
-        [spotifyOembedUrl(REPORTED_RAW)]: answer(fixture('spotify-oembed-aint-gettin-high.json')),
+        [spotifyOembedUrl(REPORTED_RAW)]: answerJson(fixture('spotify-oembed-aint-gettin-high.json')),
       })
       mockJsonp(() => ({ data: fixture('itunes-search-aint-gettin-high.json') }))
       return convertAndSettle(REPORTED_RAW)
@@ -414,6 +425,68 @@ describe('useConversion', () => {
       act(() => result.current.chooseArtist(NEON))
       expect(result.current.conversion).not.toBe(previous)
       expect(previous).toEqual(snapshot)
+    })
+
+    // PLAN-004 AC7: choosing a candidate after an auto-pick.
+    describe('after an auto-pick', () => {
+      const UNIQUE_RAW = 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd?si=xyz'
+      const UNIQUE_LINK = 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd'
+      const MARLOW: ArtistCandidate = {
+        artist: 'Marlow Vance',
+        title: 'Rollin Down to Memphis',
+        url: 'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329',
+      }
+      const HARPER: ArtistCandidate = {
+        artist: 'Harper Lane',
+        title: 'Midnight Ferry',
+        url: 'https://music.apple.com/us/album/midnight-ferry/1645678900?i=1645678912',
+      }
+      const NOTHING_LIKELY = { apple: false, spotify: false, ytm: false }
+
+      async function convertedWithAutoPick() {
+        mockFetchOnly({
+          [spotifyOembedUrl(UNIQUE_LINK)]: answerJson(fixture('spotify-oembed-unique-match.json')),
+        })
+        mockJsonp(() => ({ data: fixture('itunes-search-unique-match.json') }))
+        return convertAndSettle(UNIQUE_RAW)
+      }
+
+      it('starts with the auto-picked artist and a likely Apple link', async () => {
+        const { result } = await convertedWithAutoPick()
+        expect(result.current.conversion?.artist).toBe('Marlow Vance')
+        expect(result.current.conversion?.links.apple).toBe(MARLOW.url)
+        expect(result.current.conversion?.likely.apple).toBe(true)
+        expect(result.current.conversion?.exact.apple).toBe(false)
+      })
+
+      it('makes the Apple link exact and not likely when the auto-picked artist is chosen', async () => {
+        const { result } = await convertedWithAutoPick()
+        act(() => result.current.chooseArtist(MARLOW))
+        expect(result.current.conversion?.artist).toBe('Marlow Vance')
+        expect(result.current.conversion?.links.apple).toBe(MARLOW.url)
+        expect(result.current.conversion?.exact.apple).toBe(true)
+        expect(result.current.conversion?.likely).toEqual(NOTHING_LIKELY)
+      })
+
+      it('switches the artist, Apple link and YouTube Music search when another artist is chosen', async () => {
+        const { result } = await convertedWithAutoPick()
+        act(() => result.current.chooseArtist(HARPER))
+        expect(result.current.conversion?.artist).toBe('Harper Lane')
+        expect(result.current.conversion?.links.apple).toBe(HARPER.url)
+        expect(result.current.conversion?.exact.apple).toBe(true)
+        expect(result.current.conversion?.links.ytm).toBe(
+          "https://music.youtube.com/search?q=Rollin'%20Down%20To%20Memphis%20-%20Remastered%202015%20Harper%20Lane",
+        )
+        expect(result.current.conversion?.likely).toEqual(NOTHING_LIKELY)
+      })
+
+      it('keeps the Spotify link exact and the status done', async () => {
+        const { result } = await convertedWithAutoPick()
+        act(() => result.current.chooseArtist(HARPER))
+        expect(result.current.conversion?.links.spotify).toBe(UNIQUE_LINK)
+        expect(result.current.conversion?.exact.spotify).toBe(true)
+        expect(result.current.status).toBe('done')
+      })
     })
 
     it('does nothing when there is no conversion', () => {

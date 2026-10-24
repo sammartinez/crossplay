@@ -70,6 +70,11 @@ describe('fromItunesLookup', () => {
     })
   })
 
+  // PLAN-004 AC6/AC8: Apple-source lookups never show LIKELY.
+  it('marks nothing likely', () => {
+    expect(fromItunesLookup(fixture('itunes-lookup-song.json'), APPLE_TRACK).likely).toBeUndefined()
+  })
+
   it('upsizes the artwork from 100x100 to 300x300', () => {
     const lookup = fromItunesLookup(fixture('itunes-lookup-song.json'), APPLE_TRACK)
     expect(lookup.art).not.toBe(ARTWORK_100)
@@ -217,6 +222,12 @@ describe('fromSpotifyFallback', () => {
     expect(reported().links).toEqual({ spotify: REPORTED.link })
   })
 
+  // PLAN-004 AC3/AC6: Matson and the Neon Prairie Dogs both have the title,
+  // so nothing is auto-picked.
+  it('marks nothing LIKELY in the reported case, where two artists have the title', () => {
+    expect(reported().likely).toBeUndefined()
+  })
+
   it('returns the oEmbed title and art, a blank artist, the Spotify link and the candidates', () => {
     expect(reported()).toEqual({
       title: "Ain't Gettin' High",
@@ -318,8 +329,21 @@ describe('fromSpotifyFallback', () => {
         url: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
       },
     ])
-    expect(lookup.artist).toBe('')
-    expect(lookup.links).toEqual({ spotify: SPOTIFY_ALBUM.link })
+  })
+
+  // PLAN-004 AC6: album links follow the same rule against album results.
+  it('auto-picks Queen as LIKELY for the album link, whose only album result has the same title', () => {
+    const lookup = fromSpotifyFallback(
+      fixture('spotify-oembed-album.json'),
+      fixture('itunes-search-albums.json'),
+      SPOTIFY_ALBUM,
+    )
+    expect(lookup.artist).toBe('Queen')
+    expect(lookup.links).toEqual({
+      spotify: SPOTIFY_ALBUM.link,
+      apple: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
+    })
+    expect(lookup.likely).toEqual({ apple: true })
   })
 
   it('gives a blank artist, no Apple link and no candidates when the search finds nothing', () => {
@@ -340,5 +364,266 @@ describe('fromSpotifyFallback', () => {
     expect(lookup.artist).toBe('')
     expect(lookup.links).toEqual({ spotify: SPOTIFY_TRACK.link })
     expect(lookup.candidates ?? []).toEqual([])
+  })
+
+  // PLAN-004 AC5: exactly one artist has a result whose cleaned title is the
+  // oEmbed title's, so that artist is pre-selected and Apple tagged LIKELY.
+  describe('with exactly one artist whose title matches', () => {
+    const UNIQUE: ParsedLink = {
+      src: 'spotify',
+      kind: 'track',
+      id: '3kVr8XqPz2LmNw7TyB5hJd',
+      link: 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd',
+    }
+    const UNIQUE_THUMB =
+      'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02f0e1d2c3b4a5968778695a4b'
+    const MARLOW_MATCH_URL =
+      'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329'
+    const UNIQUE_CANDIDATES = [
+      { artist: 'Marlow Vance', title: 'Rollin Down to Memphis', url: MARLOW_MATCH_URL },
+      {
+        artist: 'The Dust Bowl Choir',
+        title: "Rollin' Down To Memphis (Live)",
+        url: 'https://music.apple.com/us/album/rollin-down-to-memphis-live/1623456780?i=1623456791',
+      },
+      {
+        artist: 'Harper Lane',
+        title: 'Midnight Ferry',
+        url: 'https://music.apple.com/us/album/midnight-ferry/1645678900?i=1645678912',
+      },
+    ]
+    const unique = () =>
+      fromSpotifyFallback(
+        fixture('spotify-oembed-unique-match.json'),
+        fixture('itunes-search-unique-match.json'),
+        UNIQUE,
+      )
+
+    it('returns that artist, its matching result as the Apple link marked likely, and the candidates', () => {
+      expect(unique()).toEqual({
+        title: "Rollin' Down To Memphis - Remastered 2015",
+        artist: 'Marlow Vance',
+        art: UNIQUE_THUMB,
+        links: { spotify: UNIQUE.link, apple: MARLOW_MATCH_URL },
+        candidates: UNIQUE_CANDIDATES,
+        likely: { apple: true },
+      })
+    })
+
+    it('sets the artist to the only artist with a matching title', () => {
+      expect(unique().artist).toBe('Marlow Vance')
+    })
+
+    it("links Apple Music to that artist's matching result on music.apple.com without &uo=", () => {
+      const { apple } = unique().links
+      expect(apple).toBe(MARLOW_MATCH_URL)
+      expect(new URL(apple!).hostname).toBe('music.apple.com')
+      expect(apple).not.toContain('uo=')
+    })
+
+    it('marks only the Apple link likely', () => {
+      expect(unique().likely).toEqual({ apple: true })
+    })
+
+    it('keeps the canonical Spotify link', () => {
+      expect(unique().links.spotify).toBe(UNIQUE.link)
+    })
+
+    it('keeps the original oEmbed title, not the cleaned one', () => {
+      expect(unique().title).toBe("Rollin' Down To Memphis - Remastered 2015")
+    })
+
+    it("keeps an artist's first matching result as its candidate when its first result does not match", () => {
+      const marlow = unique().candidates?.find((c) => c.artist === 'Marlow Vance')
+      expect(marlow).toEqual({ artist: 'Marlow Vance', title: 'Rollin Down to Memphis', url: MARLOW_MATCH_URL })
+    })
+
+    it("keeps each other artist's first result as its candidate", () => {
+      expect(unique().candidates).toEqual(UNIQUE_CANDIDATES)
+    })
+
+    it('counts two matching results by the same artist as one artist', () => {
+      const lookup = fromSpotifyFallback(
+        fixture('spotify-oembed-unique-match.json'),
+        {
+          results: [
+            song('Marlow Vance', 'Rollin Down to Memphis', 'https://itunes.apple.com/us/album/a/1?i=11&uo=4'),
+            song(' MARLOW VANCE ', "Rollin' Down To Memphis", 'https://itunes.apple.com/us/album/b/2?i=22&uo=4'),
+            song('Harper Lane', 'Midnight Ferry', 'https://itunes.apple.com/us/album/c/3?i=33&uo=4'),
+          ],
+        },
+        UNIQUE,
+      )
+      expect(lookup.artist).toBe('Marlow Vance')
+      expect(lookup.links.apple).toBe('https://music.apple.com/us/album/a/1?i=11')
+      expect(lookup.likely).toEqual({ apple: true })
+    })
+  })
+
+  // PLAN-004 AC6: the edges of the auto-pick rule.
+  describe('auto-pick edges', () => {
+    const titled = (title: string) => ({ ...fixture<object>('spotify-oembed-track.json'), title })
+
+    it('matches "Aint Gettin High" with the oEmbed title "Ain\'t Gettin\' High"', () => {
+      const lookup = fromSpotifyFallback(
+        fixture('spotify-oembed-aint-gettin-high.json'),
+        {
+          results: [
+            song('Samuel Cody Matson', 'Aint Gettin High', 'https://itunes.apple.com/us/album/a/1?i=11&uo=4'),
+            song('Zach Bryan', 'Younger Years', 'https://itunes.apple.com/us/album/b/2?i=22&uo=4'),
+          ],
+        },
+        REPORTED,
+      )
+      expect(lookup.artist).toBe('Samuel Cody Matson')
+      expect(lookup.links.apple).toBe('https://music.apple.com/us/album/a/1?i=11')
+      expect(lookup.likely).toEqual({ apple: true })
+    })
+
+    it('does not match a "(Live)" version, so a live-only artist is not picked', () => {
+      const lookup = fromSpotifyFallback(
+        fixture('spotify-oembed-aint-gettin-high.json'),
+        {
+          results: [
+            song('The Neon Prairie Dogs', "Ain't Gettin' High (Live)", 'https://itunes.apple.com/us/album/a/1?i=11&uo=4'),
+            song('Zach Bryan', 'Younger Years', 'https://itunes.apple.com/us/album/b/2?i=22&uo=4'),
+          ],
+        },
+        REPORTED,
+      )
+      expect(lookup.artist).toBe('')
+      expect(lookup.links).toEqual({ spotify: REPORTED.link })
+      expect(lookup.likely).toBeUndefined()
+    })
+
+    it('picks nothing for "Bohemian Rhapsody - Remastered 2011", where Queen and The Petersens both match after cleaning', () => {
+      const lookup = fromSpotifyFallback(
+        fixture('spotify-oembed-track.json'),
+        fixture('itunes-search-songs.json'),
+        SPOTIFY_TRACK,
+      )
+      expect(lookup.artist).toBe('')
+      expect(lookup.links).toEqual({ spotify: SPOTIFY_TRACK.link })
+      expect(lookup.likely).toBeUndefined()
+    })
+
+    it('keeps Queen\'s plain "Bohemian Rhapsody" as its candidate, not "Bohemian Rhapsody (Live Aid)"', () => {
+      const lookup = fromSpotifyFallback(
+        fixture('spotify-oembed-track.json'),
+        fixture('itunes-search-songs.json'),
+        SPOTIFY_TRACK,
+      )
+      expect(lookup.candidates).toEqual([
+        {
+          artist: 'Queen',
+          title: 'Bohemian Rhapsody',
+          url: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
+        },
+        {
+          artist: 'The Petersens',
+          title: 'Bohemian Rhapsody',
+          url: 'https://music.apple.com/us/album/bohemian-rhapsody/1564530719?i=1564530724',
+        },
+      ])
+    })
+
+    it('picks Queen when its only matching result comes after its "(Live Aid)" result', () => {
+      const lookup = fromSpotifyFallback(
+        fixture('spotify-oembed-track.json'),
+        {
+          results: [
+            song('Queen', 'Bohemian Rhapsody (Live Aid)', 'https://itunes.apple.com/us/album/a/1?i=11&uo=4'),
+            song('Queen', 'Bohemian Rhapsody', 'https://itunes.apple.com/us/album/b/2?i=22&uo=4'),
+            song('Panic Room', 'Something Else', 'https://itunes.apple.com/us/album/c/3?i=33&uo=4'),
+          ],
+        },
+        SPOTIFY_TRACK,
+      )
+      expect(lookup.artist).toBe('Queen')
+      expect(lookup.links.apple).toBe('https://music.apple.com/us/album/b/2?i=22')
+      expect(lookup.candidates?.[0]).toEqual({
+        artist: 'Queen',
+        title: 'Bohemian Rhapsody',
+        url: 'https://music.apple.com/us/album/b/2?i=22',
+      })
+      expect(lookup.likely).toEqual({ apple: true })
+    })
+
+    it('keeps an artist\'s first result as its candidate when none of its results match', () => {
+      const lookup = fromSpotifyFallback(
+        fixture('spotify-oembed-track.json'),
+        {
+          results: [
+            song('Queen', 'Bohemian Rhapsody (Live Aid)', 'https://itunes.apple.com/us/album/a/1?i=11&uo=4'),
+            song('Queen', 'Bohemian Rhapsody (Live)', 'https://itunes.apple.com/us/album/b/2?i=22&uo=4'),
+          ],
+        },
+        SPOTIFY_TRACK,
+      )
+      expect(lookup.candidates).toEqual([
+        {
+          artist: 'Queen',
+          title: 'Bohemian Rhapsody (Live Aid)',
+          url: 'https://music.apple.com/us/album/a/1?i=11',
+        },
+      ])
+      expect(lookup.artist).toBe('')
+    })
+
+    it('picks nothing when no artist has a matching title', () => {
+      const lookup = fromSpotifyFallback(
+        fixture('spotify-oembed-track.json'),
+        {
+          results: [
+            song('Queen', 'Bohemian Rhapsody (Live Aid)', 'https://itunes.apple.com/us/album/a/1?i=11&uo=4'),
+            song('Panic Room', 'Something Else', 'https://itunes.apple.com/us/album/b/2?i=22&uo=4'),
+          ],
+        },
+        SPOTIFY_TRACK,
+      )
+      expect(lookup.artist).toBe('')
+      expect(lookup.links).toEqual({ spotify: SPOTIFY_TRACK.link })
+      expect(lookup.likely).toBeUndefined()
+    })
+
+    it('picks nothing when the oEmbed title is blank, even against a result with no title', () => {
+      const lookup = fromSpotifyFallback(
+        titled(''),
+        {
+          results: [
+            { artistName: 'Queen', trackViewUrl: 'https://itunes.apple.com/us/album/a/1?i=11&uo=4' },
+          ],
+        },
+        SPOTIFY_TRACK,
+      )
+      expect(lookup.artist).toBe('')
+      expect(lookup.links).toEqual({ spotify: SPOTIFY_TRACK.link })
+      expect(lookup.likely).toBeUndefined()
+    })
+
+    it('picks nothing when the oEmbed title is only noise, even against the same title', () => {
+      const lookup = fromSpotifyFallback(
+        titled('(Remastered)'),
+        {
+          results: [song('Queen', '(Remastered)', 'https://itunes.apple.com/us/album/a/1?i=11&uo=4')],
+        },
+        SPOTIFY_TRACK,
+      )
+      expect(lookup.artist).toBe('')
+      expect(lookup.likely).toBeUndefined()
+    })
+
+    it('picks nothing when iTunes finds nothing', () => {
+      const lookup = fromSpotifyFallback(
+        fixture('spotify-oembed-track.json'),
+        fixture('itunes-search-empty.json'),
+        SPOTIFY_TRACK,
+      )
+      expect(lookup.likely).toBeUndefined()
+    })
+
+    it('picks nothing when the iTunes body is null', () => {
+      expect(fromSpotifyFallback(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK).likely).toBeUndefined()
+    })
   })
 })
