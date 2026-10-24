@@ -1,0 +1,13 @@
+{
+  "baseBranch": "claude/eng-team-command-bepn8k",
+  "commands": {
+    "test": "npm test",
+    "lint": null,
+    "typecheck": null,
+    "preview": "python3 -m http.server 5173"
+  },
+  "previewUrl": "http://localhost:5173",
+  "testPaths": ["tests/", "__tests__/", "**/*.test.*", "**/*.spec.*", "vitest.config.*", "vitest.setup.*", "jest.config.*", "jest.setup.*", "setupTests.*", "playwright.config.*"],
+  "paths": { "constants": "src/constants.js", "shared": "src/lib/" },
+  "maxReviewRounds": 3
+}
