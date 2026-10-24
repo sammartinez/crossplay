@@ -8,3 +8,56 @@ export const THEME_STORAGE_KEY = 'cp-theme'
 export const THEME_ATTRIBUTE = 'data-theme'
 export const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
 export const THEME_TOGGLE_LABEL = 'Theme'
+
+export const PLATFORM_APPLE = 'apple'
+export const PLATFORM_SPOTIFY = 'spotify'
+export const PLATFORM_YTM = 'ytm'
+// Display order for result links and share text.
+export const PLATFORMS = [
+  { key: PLATFORM_APPLE, name: 'Apple Music' },
+  { key: PLATFORM_SPOTIFY, name: 'Spotify' },
+  { key: PLATFORM_YTM, name: 'YouTube Music' },
+] as const
+
+export const KIND_TRACK = 'track'
+export const KIND_ALBUM = 'album'
+
+export const SPOTIFY_HOST_RE = /(^|\.)spotify\.(com|link)$/
+export const SPOTIFY_SHORT_HOST = 'spotify.link'
+export const SPOTIFY_ORIGIN = 'https://open.spotify.com'
+// oEmbed's player URL carries the real track/album ID behind a short link.
+export const SPOTIFY_EMBED_RE = /embed\/(track|album)\/([A-Za-z0-9]+)/
+export const SPOTIFY_OEMBED_URL = `${SPOTIFY_ORIGIN}/oembed`
+
+export const APPLE_MUSIC_HOST = 'music.apple.com'
+export const APPLE_SONG_PARAM = 'i'
+export const APPLE_SONG_SEGMENT = 'song'
+export const APPLE_ALBUM_SEGMENT = 'album'
+export const SLUG_SEPARATOR_RE = /-/g
+
+export const SEARCH_URL_BASES = {
+  [PLATFORM_SPOTIFY]: `${SPOTIFY_ORIGIN}/search/`,
+  [PLATFORM_APPLE]: `https://${APPLE_MUSIC_HOST}/us/search?term=`,
+  [PLATFORM_YTM]: 'https://music.youtube.com/search?q=',
+}
+
+export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
+export const ODESLI_COUNTRY = 'US'
+
+export const ITUNES_HOST = 'itunes.apple.com'
+export const ITUNES_LOOKUP_URL = `https://${ITUNES_HOST}/lookup`
+export const ITUNES_SEARCH_URL = `https://${ITUNES_HOST}/search`
+export const ITUNES_COUNTRY = 'us'
+export const ITUNES_SEARCH_LIMIT = 5
+export const ITUNES_ENTITY_SONG = 'song'
+export const ITUNES_ENTITY_ALBUM = 'album'
+export const ITUNES_TRACKING_PARAM = '&uo='
+export const ARTWORK_SIZE_SMALL = '100x100'
+export const ARTWORK_SIZE_LARGE = '300x300'
+
+export const WORD_SEPARATOR = ' '
+export const WORD_START_RE = /\b\w/g
+export const LINE_BREAK = '\n'
+export const TITLE_ARTIST_SEPARATOR = ' — '
+export const SHARE_LABEL_SEPARATOR = ': '
+export const PATH_SEPARATOR = '/'
