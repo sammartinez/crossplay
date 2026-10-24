@@ -68,6 +68,8 @@ const status = () => screen.getByRole('status')
 const input = () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLInputElement
 const convertButton = () => screen.getByRole('button', { name: 'Convert' })
 const platformLink = (name: string) => screen.getByRole('link', { name })
+// A row's platform link, by name, so a second link in the row is not picked up.
+const PLATFORM_NAME = /^(Apple Music|Spotify|YouTube Music)$/
 const queryPlatformLink = (name: string) => screen.queryByRole('link', { name })
 const artwork = () => document.querySelector('main img')
 
@@ -265,7 +267,7 @@ describe('App', () => {
       await waitForResult()
       const names = screen
         .getAllByRole('listitem')
-        .map((li) => within(li).getByRole('link').textContent)
+        .map((li) => within(li).getByRole('link', { name: PLATFORM_NAME }).textContent)
       expect(names).toEqual(['Apple Music', 'Spotify', 'YouTube Music'])
     })
 
