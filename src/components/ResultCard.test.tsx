@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import ResultCard from './ResultCard'
 import { withSearchFallbacks } from '../lib/links'
 import type { AppleAlt } from '../lib/types'
+import { isShown } from '../test/dom'
 
 // AC11 (result card) and AC12 (alternates), from a Conversion prop.
 
@@ -28,16 +29,6 @@ const row = (name: string) => {
   return li
 }
 
-// Visible as toBeVisible sees it: no `hidden`, display:none or visibility:hidden up the tree.
-const isShown = (el: Element): boolean => {
-  for (let node: Element | null = el; node; node = node.parentElement) {
-    const style = getComputedStyle(node)
-    if (node.hasAttribute('hidden') || style.display === 'none' || style.visibility === 'hidden') {
-      return false
-    }
-  }
-  return true
-}
 
 function renderCard(conversion = CONVERSION) {
   const onChooseAlt = vi.fn()

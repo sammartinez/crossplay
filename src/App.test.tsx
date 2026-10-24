@@ -6,6 +6,7 @@ import { SPOTIFY_OEMBED_URL } from './constants'
 import { odesliUrl } from './lib/lookup'
 import { fixture } from './test/fixtures'
 import { type Deferred, deferred, jsonResponse, mockFetch, mockJsonp } from './test/network'
+import { isShown } from './test/dom'
 
 // AC11 (convert UI) and AC12 (alternates), driven through App's rendered
 // output with only fetch and the JSONP script load stood in.
@@ -54,16 +55,6 @@ const row = (name: string) => {
 }
 const artwork = () => document.querySelector('main img')
 
-// Visible as toBeVisible sees it: no `hidden`, display:none or visibility:hidden up the tree.
-const isShown = (el: Element): boolean => {
-  for (let node: Element | null = el; node; node = node.parentElement) {
-    const style = getComputedStyle(node)
-    if (node.hasAttribute('hidden') || style.display === 'none' || style.visibility === 'hidden') {
-      return false
-    }
-  }
-  return true
-}
 
 function submit(value: string) {
   fireEvent.change(input(), { target: { value } })
