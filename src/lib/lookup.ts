@@ -19,13 +19,14 @@ import {
   ODESLI_API_URL,
   ODESLI_COUNTRY,
   ODESLI_COUNTRY_PARAM,
-  PLATFORM_SPOTIFY,
+  ODESLI_URL_PARAM,
+  OEMBED_URL_PARAM,
   SPOTIFY_EMBED_RE,
   SPOTIFY_OEMBED_URL,
-  URL_PARAM,
 } from '../constants'
-import { canonicalSpotifyLink } from './links'
+import { spotifyParsedLink } from './links'
 import { titleCase } from './text'
+import { withParams } from './url'
 import type {
   AppleAlt,
   ItunesResponse,
@@ -36,14 +37,11 @@ import type {
   SpotifyOembed,
 } from './types'
 
-const withParams = (base: string, params: Record<string, string>): string =>
-  `${base}?${new URLSearchParams(params)}`
-
 const itunesEntity = (kind?: Kind): string =>
   kind === KIND_ALBUM ? ITUNES_ENTITY_ALBUM : ITUNES_ENTITY_SONG
 
 export const odesliUrl = (link: string): string =>
-  withParams(ODESLI_API_URL, { [ODESLI_COUNTRY_PARAM]: ODESLI_COUNTRY, [URL_PARAM]: link })
+  withParams(ODESLI_API_URL, { [ODESLI_COUNTRY_PARAM]: ODESLI_COUNTRY, [ODESLI_URL_PARAM]: link })
 
 export function fromOdesli(body: OdesliResponse): Lookup {
   const entity = body.entityUniqueId ? body.entitiesByUniqueId?.[body.entityUniqueId] : undefined
@@ -79,14 +77,11 @@ export function fromItunesLookup(body: ItunesResponse | null, p: ParsedLink): Lo
 }
 
 export const spotifyOembedUrl = (link: string): string =>
-  withParams(SPOTIFY_OEMBED_URL, { [URL_PARAM]: link })
+  withParams(SPOTIFY_OEMBED_URL, { [OEMBED_URL_PARAM]: link })
 
 export function resolveSpotifyShortLink(oembed: SpotifyOembed): ParsedLink | null {
   const match = (oembed.iframe_url || oembed.html || '').match(SPOTIFY_EMBED_RE)
-  if (!match) return null
-  const kind = match[1] as Kind
-  const id = match[2]
-  return { src: PLATFORM_SPOTIFY, kind, id, link: canonicalSpotifyLink(kind, id) }
+  return match ? spotifyParsedLink(match[1] as Kind, match[2]) : null
 }
 
 export const itunesSearchUrl = (title: string, kind?: Kind): string =>
@@ -104,7 +99,7 @@ export function fromSpotifyFallback(
 ): Lookup {
   const alts: AppleAlt[] = (itunesBody?.results || []).map((r) => ({
     title: r.trackName || r.collectionName || '',
-    artist: r.artistName,
+    artist: r.artistName || '',
     url: (r.trackViewUrl || r.collectionViewUrl || '')
       .replace(ITUNES_HOST, APPLE_MUSIC_HOST)
       .split(ITUNES_TRACKING_PARAM)[0],

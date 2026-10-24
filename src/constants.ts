@@ -44,8 +44,8 @@ export const SEARCH_URL_BASES = {
 export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
 export const ODESLI_COUNTRY = 'US'
 export const ODESLI_COUNTRY_PARAM = 'userCountry'
-// The link being looked up, for both Odesli and Spotify oEmbed.
-export const URL_PARAM = 'url'
+export const ODESLI_URL_PARAM = 'url'
+export const OEMBED_URL_PARAM = 'url'
 
 export const ITUNES_HOST = 'itunes.apple.com'
 export const ITUNES_LOOKUP_URL = `https://${ITUNES_HOST}/lookup`

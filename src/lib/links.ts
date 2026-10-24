@@ -24,14 +24,19 @@ const isKind = (segment: string): segment is Kind =>
 export const canonicalSpotifyLink = (kind: Kind, id: string): string =>
   [SPOTIFY_ORIGIN, kind, id].join(PATH_SEPARATOR)
 
+export const spotifyParsedLink = (kind: Kind, id: string): ParsedLink => ({
+  src: PLATFORM_SPOTIFY,
+  kind,
+  id,
+  link: canonicalSpotifyLink(kind, id),
+})
+
 function parseSpotify(u: URL, parts: string[]): ParsedLink | null {
   const i = parts.findIndex(isKind)
   if (i < 0) {
     return u.hostname.endsWith(SPOTIFY_SHORT_HOST) ? { src: PLATFORM_SPOTIFY, link: u.href } : null
   }
-  const kind = parts[i] as Kind
-  const id = parts[i + 1]
-  return { src: PLATFORM_SPOTIFY, kind, id, link: canonicalSpotifyLink(kind, id) }
+  return spotifyParsedLink(parts[i] as Kind, parts[i + 1])
 }
 
 function parseApple(u: URL, parts: string[]): ParsedLink | null {
