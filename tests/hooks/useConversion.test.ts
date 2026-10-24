@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { useConversion } from '../../src/hooks/useConversion'
 import { withSearchFallbacks } from '../../src/lib/links'
 import { SPOTIFY_OEMBED_URL } from '../../src/constants'
-import { fromOdesli, fromSpotifyFallback, odesliUrl } from '../../src/lib/lookup'
-import type { ParsedLink } from '../../src/lib/types'
+import { fromOdesli, odesliUrl } from '../../src/lib/lookup'
+import type { ArtistCandidate, ParsedLink } from '../../src/lib/types'
 import { fixture } from '../support/fixtures'
 import {
   type Deferred,
@@ -16,7 +16,7 @@ import {
   mockJsonp,
 } from '../support/network'
 
-// AC10 (conversion state) and AC12 (choosing an alternate Apple match).
+// AC10 (conversion state) and, from PLAN-002, AC7 (choosing an artist candidate).
 // The task interface names the result `conversion` and adds `isError`.
 
 const INVALID_LINK_MESSAGE = 'That link isn’t a Spotify or Apple Music track or album.'
@@ -39,14 +39,6 @@ const odesliFails = () => jsonResponse({}, 500)
 const sharedLink = () => new URLSearchParams(window.location.search).get('u')
 
 const ODESLI_TRACK = () => withSearchFallbacks(fromOdesli(fixture('odesli-track.json')))
-const SPOTIFY_FALLBACK = () =>
-  withSearchFallbacks(
-    fromSpotifyFallback(
-      fixture('spotify-oembed-track.json'),
-      fixture('itunes-search-songs.json'),
-      SPOTIFY_TRACK,
-    ),
-  )
 
 // Odesli fails, oEmbed returns `oembed`, iTunes search returns the songs fixture.
 function spotifyFallback(oembed: unknown) {
@@ -292,53 +284,100 @@ describe('useConversion', () => {
     })
   })
 
-  describe('chooseAlt', () => {
-    async function convertedWithAlts() {
-      spotifyFallback(fixture('spotify-oembed-track.json'))
-      const hook = await convertAndSettle(SPOTIFY_TRACK_RAW)
-      expect(hook.result.current.conversion?.alts).toHaveLength(3)
-      return hook
+  describe('chooseArtist', () => {
+    // The reported case: Odesli is rate-limited twice, oEmbed has no artist,
+    // iTunes search returns several artists.
+    const REPORTED_RAW = 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb'
+    const NEON: ArtistCandidate = {
+      artist: 'The Neon Prairie Dogs',
+      title: "Ain't Gettin' High",
+      url: 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571',
+    }
+    const ZACH: ArtistCandidate = {
+      artist: 'Zach Bryan',
+      title: 'Younger Years',
+      url: 'https://music.apple.com/us/album/younger-years/1640014741?i=1640014759',
     }
 
-    it('makes the chosen alternate the exact Apple link', async () => {
-      const { result } = await convertedWithAlts()
-      const alt = result.current.conversion!.alts![2]
-      act(() => result.current.chooseAlt(alt))
-      expect(result.current.conversion?.links.apple).toBe(alt.url)
+    async function convertedWithCandidates() {
+      mockFetch((url) =>
+        url.startsWith(SPOTIFY_OEMBED_URL)
+          ? jsonResponse(fixture('spotify-oembed-aint-gettin-high.json'))
+          : jsonResponse({}, 429),
+      )
+      mockJsonp(() => ({ data: fixture('itunes-search-aint-gettin-high.json') }))
+      return convertAndSettle(REPORTED_RAW)
+    }
+
+    it('starts with a blank artist and three candidates', async () => {
+      const { result } = await convertedWithCandidates()
+      expect(result.current.conversion?.artist).toBe('')
+      expect(result.current.conversion?.candidates?.map((c) => c.artist)).toEqual([
+        'Samuel Cody Matson',
+        'The Neon Prairie Dogs',
+        'Zach Bryan',
+      ])
+    })
+
+    it("sets the artist to the chosen candidate's artist", async () => {
+      const { result } = await convertedWithCandidates()
+      act(() => result.current.chooseArtist(NEON))
+      expect(result.current.conversion?.artist).toBe('The Neon Prairie Dogs')
+    })
+
+    it("makes the chosen candidate's URL the exact Apple link", async () => {
+      const { result } = await convertedWithCandidates()
+      act(() => result.current.chooseArtist(NEON))
+      expect(result.current.conversion?.links.apple).toBe(NEON.url)
       expect(result.current.conversion?.exact.apple).toBe(true)
     })
 
-    it('updates the artist to the chosen alternate', async () => {
-      const { result } = await convertedWithAlts()
-      const alt = result.current.conversion!.alts![2]
-      act(() => result.current.chooseAlt(alt))
-      expect(result.current.conversion?.artist).toBe('The Petersens')
+    it('rebuilds the YouTube Music search with the chosen artist', async () => {
+      const { result } = await convertedWithCandidates()
+      act(() => result.current.chooseArtist(NEON))
+      expect(result.current.conversion?.links.ytm).toBe(
+        "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
+      )
     })
 
-    it('moves the chosen alternate to the front and keeps the others in order', async () => {
-      const { result } = await convertedWithAlts()
-      const [first, second, third] = result.current.conversion!.alts!
-      act(() => result.current.chooseAlt(third))
-      expect(result.current.conversion?.alts).toEqual([third, first, second])
+    it('keeps the candidates in the same order', async () => {
+      const { result } = await convertedWithCandidates()
+      const before = result.current.conversion!.candidates
+      act(() => result.current.chooseArtist(NEON))
+      expect(result.current.conversion?.candidates).toEqual(before)
     })
 
-    it('leaves the title and the other platform links as they were', async () => {
-      const { result } = await convertedWithAlts()
-      const before = SPOTIFY_FALLBACK()
-      act(() => result.current.chooseAlt(result.current.conversion!.alts![1]))
-      expect(result.current.conversion?.title).toBe(before.title)
-      expect(result.current.conversion?.links.spotify).toBe(before.links.spotify)
-      expect(result.current.conversion?.links.ytm).toBe(before.links.ytm)
+    it('switches to another candidate when a second one is chosen', async () => {
+      const { result } = await convertedWithCandidates()
+      act(() => result.current.chooseArtist(NEON))
+      act(() => result.current.chooseArtist(ZACH))
+      expect(result.current.conversion?.artist).toBe('Zach Bryan')
+      expect(result.current.conversion?.links.apple).toBe(ZACH.url)
+    })
+
+    it('leaves the title, the Spotify link and the status as they were', async () => {
+      const { result } = await convertedWithCandidates()
+      act(() => result.current.chooseArtist(NEON))
+      expect(result.current.conversion?.title).toBe("Ain't Gettin' High")
+      expect(result.current.conversion?.links.spotify).toBe(REPORTED_RAW)
+      expect(result.current.conversion?.exact.spotify).toBe(true)
       expect(result.current.status).toBe('done')
     })
 
     it('returns a new conversion and does not mutate the previous one', async () => {
-      const { result } = await convertedWithAlts()
+      const { result } = await convertedWithCandidates()
       const previous = result.current.conversion!
       const snapshot = structuredClone(previous)
-      act(() => result.current.chooseAlt(previous.alts![2]))
+      act(() => result.current.chooseArtist(NEON))
       expect(result.current.conversion).not.toBe(previous)
       expect(previous).toEqual(snapshot)
+    })
+
+    it('does nothing when there is no conversion', () => {
+      const { result } = renderHook(() => useConversion())
+      act(() => result.current.chooseArtist(NEON))
+      expect(result.current.conversion).toBeNull()
+      expect(result.current.status).toBe('idle')
     })
   })
 })

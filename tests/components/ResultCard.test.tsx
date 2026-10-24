@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ResultCard from '../../src/components/ResultCard'
 import { withSearchFallbacks } from '../../src/lib/links'
-import type { AppleAlt } from '../../src/lib/types'
+import type { ArtistCandidate } from '../../src/lib/types'
 import {
   FALLBACK_LABEL,
   RESET_MS,
@@ -15,28 +15,42 @@ import {
 } from '../support/clipboard'
 import { expectNotShown, isShown, resultRow as row } from '../support/dom'
 
-// AC11 (result card), AC12 (alternates) and AC13 (copy and share), from a
-// Conversion prop.
+// AC11 (result card) and AC13 (copy and share), from a Conversion prop.
+// PLAN-002 AC5/AC7: the honest fallback and the "Which artist?" picker.
 
-const ALTS: AppleAlt[] = [
-  { title: 'Song', artist: 'First Artist', url: 'https://music.apple.com/us/album/song/1?i=11' },
-  { title: 'Song (Live)', artist: 'Second Artist', url: 'https://music.apple.com/us/album/song/2?i=22' },
-  { title: 'Song', artist: 'Third Artist', url: 'https://music.apple.com/us/album/song/3?i=33' },
+const CANDIDATES: ArtistCandidate[] = [
+  { artist: 'First Artist', title: 'Song', url: 'https://music.apple.com/us/album/song/1?i=11' },
+  { artist: 'Second Artist', title: 'Song (Live)', url: 'https://music.apple.com/us/album/song/2?i=22' },
+  { artist: 'Third Artist', title: 'Other Song', url: 'https://music.apple.com/us/album/other/3?i=33' },
 ]
+const CANDIDATE_NAMES = ['First Artist · Song', 'Second Artist · Song (Live)', 'Third Artist · Other Song']
 
+// An exact result with an artist and no candidates, as Odesli gives.
 const CONVERSION = withSearchFallbacks({
   title: 'Song',
   artist: 'First Artist',
   art: 'https://example.com/art.jpg',
-  links: { spotify: 'https://open.spotify.com/track/abc', apple: ALTS[0].url },
-  alts: ALTS,
+  links: { spotify: 'https://open.spotify.com/track/abc', apple: CANDIDATES[0].url },
+})
+
+// A Spotify fallback result: blank artist, Spotify exact, candidates to pick from.
+const FALLBACK = withSearchFallbacks({
+  title: 'Song',
+  artist: '',
+  art: 'https://example.com/art.jpg',
+  links: { spotify: 'https://open.spotify.com/track/abc' },
+  candidates: CANDIDATES,
 })
 
 function renderCard(conversion = CONVERSION) {
-  const onChooseAlt = vi.fn()
-  const view = render(<ResultCard conversion={conversion} onChooseAlt={onChooseAlt} />)
-  return { onChooseAlt, view }
+  const onChooseArtist = vi.fn()
+  const view = render(<ResultCard conversion={conversion} onChooseArtist={onChooseArtist} />)
+  return { onChooseArtist, view }
 }
+
+const picker = () => screen.getByRole('group', { name: 'Which artist?' })
+const queryPicker = () => screen.queryByRole('group', { name: 'Which artist?' })
+const candidateButton = (name: string) => within(picker()).getByRole('button', { name })
 
 describe('ResultCard', () => {
   it('shows the title and the artist', () => {
@@ -79,29 +93,85 @@ describe('ResultCard', () => {
     expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
   })
 
-  it('shows "Wrong Apple match?" with a "<title> · <artist>" button for each other match', () => {
-    renderCard()
-    expect(screen.getByText('Wrong Apple match?')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Song (Live) · Second Artist' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Song · Third Artist' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Song · First Artist' })).not.toBeInTheDocument()
-  })
+  describe('artist picker', () => {
+    it('shows a group labelled "Which artist?" when there are candidates', () => {
+      renderCard(FALLBACK)
+      expect(picker()).toBeInTheDocument()
+      expect(screen.getByText('Which artist?')).toBeInTheDocument()
+    })
 
-  it('calls onChooseAlt with the clicked match', () => {
-    const { onChooseAlt } = renderCard()
-    fireEvent.click(screen.getByRole('button', { name: 'Song · Third Artist' }))
-    expect(onChooseAlt).toHaveBeenCalledTimes(1)
-    expect(onChooseAlt).toHaveBeenCalledWith(ALTS[2])
-  })
+    it('shows one "<artist> · <title>" button per candidate, in order', () => {
+      renderCard(FALLBACK)
+      const names = within(picker())
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+      expect(names).toEqual(CANDIDATE_NAMES)
+    })
 
-  it('hides the alternates block with a single match', () => {
-    renderCard({ ...CONVERSION, alts: ALTS.slice(0, 1) })
-    expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
-  })
+    it('makes each candidate a plain button, not a submit button', () => {
+      renderCard(FALLBACK)
+      for (const name of CANDIDATE_NAMES) {
+        expect(candidateButton(name)).toHaveAttribute('type', 'button')
+      }
+    })
 
-  it('hides the alternates block with no matches', () => {
-    renderCard({ ...CONVERSION, alts: undefined })
-    expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
+    it('presses no button while the artist is blank', () => {
+      renderCard(FALLBACK)
+      for (const name of CANDIDATE_NAMES) {
+        expect(candidateButton(name)).toHaveAttribute('aria-pressed', 'false')
+      }
+    })
+
+    it('presses the button of the candidate whose artist is the current artist', () => {
+      renderCard({ ...FALLBACK, artist: 'Second Artist' })
+      expect(candidateButton('First Artist · Song')).toHaveAttribute('aria-pressed', 'false')
+      expect(candidateButton('Second Artist · Song (Live)')).toHaveAttribute('aria-pressed', 'true')
+      expect(candidateButton('Third Artist · Other Song')).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('calls onChooseArtist with the clicked candidate', () => {
+      const { onChooseArtist } = renderCard(FALLBACK)
+      fireEvent.click(candidateButton('Third Artist · Other Song'))
+      expect(onChooseArtist).toHaveBeenCalledTimes(1)
+      expect(onChooseArtist).toHaveBeenCalledWith(CANDIDATES[2])
+    })
+
+    it('shows no artist name under the title while the artist is blank', () => {
+      renderCard(FALLBACK)
+      expect(screen.getByText('Song')).toBeInTheDocument()
+      for (const { artist } of CANDIDATES) {
+        expect(screen.queryByText(artist)).not.toBeInTheDocument()
+      }
+    })
+
+    it('tags the fallback Apple Music and YouTube Music rows SEARCH and Spotify EXACT', () => {
+      renderCard(FALLBACK)
+      expect(within(row('Apple Music')).getByText('SEARCH')).toBeInTheDocument()
+      expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
+      expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
+    })
+
+    it('hides the picker when there are no candidates', () => {
+      renderCard({ ...FALLBACK, candidates: undefined })
+      expect(queryPicker()).not.toBeInTheDocument()
+      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+    })
+
+    it('hides the picker when the candidate list is empty', () => {
+      renderCard({ ...FALLBACK, candidates: [] })
+      expect(queryPicker()).not.toBeInTheDocument()
+      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+    })
+
+    it('shows the picker for a single candidate', () => {
+      renderCard({ ...FALLBACK, candidates: CANDIDATES.slice(0, 1) })
+      expect(within(picker()).getAllByRole('button')).toHaveLength(1)
+    })
+
+    it('never shows the old "Wrong Apple match?" block', () => {
+      renderCard(FALLBACK)
+      expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
+    })
   })
 
   describe('copy and share', () => {
