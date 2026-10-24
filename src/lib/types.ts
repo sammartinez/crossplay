@@ -51,7 +51,7 @@ export type OdesliResponse = {
 type ItunesResult = {
   trackName?: string
   collectionName?: string
-  artistName: string
+  artistName?: string
   artworkUrl100?: string
   trackViewUrl?: string
   collectionViewUrl?: string
@@ -60,7 +60,7 @@ type ItunesResult = {
 export type ItunesResponse = { results?: ItunesResult[] }
 
 export type SpotifyOembed = {
-  title: string
+  title?: string
   thumbnail_url?: string
   iframe_url?: string
   html?: string

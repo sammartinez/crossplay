@@ -16,7 +16,7 @@ import {
   SPOTIFY_SHORT_HOST,
   WORD_SEPARATOR,
 } from '../constants'
-import type { Conversion, Kind, Lookup, ParsedLink, Platform } from './types'
+import type { AppleAlt, Conversion, Kind, Lookup, ParsedLink, Platform } from './types'
 
 const isKind = (segment: string): segment is Kind =>
   segment === KIND_TRACK || segment === KIND_ALBUM
@@ -24,14 +24,19 @@ const isKind = (segment: string): segment is Kind =>
 export const canonicalSpotifyLink = (kind: Kind, id: string): string =>
   [SPOTIFY_ORIGIN, kind, id].join(PATH_SEPARATOR)
 
+export const spotifyParsedLink = (kind: Kind, id: string): ParsedLink => ({
+  src: PLATFORM_SPOTIFY,
+  kind,
+  id,
+  link: canonicalSpotifyLink(kind, id),
+})
+
 function parseSpotify(u: URL, parts: string[]): ParsedLink | null {
   const i = parts.findIndex(isKind)
   if (i < 0) {
     return u.hostname.endsWith(SPOTIFY_SHORT_HOST) ? { src: PLATFORM_SPOTIFY, link: u.href } : null
   }
-  const kind = parts[i] as Kind
-  const id = parts[i + 1]
-  return { src: PLATFORM_SPOTIFY, kind, id, link: canonicalSpotifyLink(kind, id) }
+  return spotifyParsedLink(parts[i] as Kind, parts[i + 1])
 }
 
 function parseApple(u: URL, parts: string[]): ParsedLink | null {
@@ -77,3 +82,11 @@ export function withSearchFallbacks(lookup: Lookup): Conversion {
   }
   return { ...lookup, links, exact }
 }
+
+export const withAppleAlt = (conversion: Conversion, alt: AppleAlt): Conversion => ({
+  ...conversion,
+  artist: alt.artist,
+  links: { ...conversion.links, apple: alt.url },
+  exact: { ...conversion.exact, apple: true },
+  alts: [alt, ...(conversion.alts || []).filter((other) => other !== alt)],
+})

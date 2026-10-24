@@ -44,8 +44,8 @@ export const SEARCH_URL_BASES = {
 export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
 export const ODESLI_COUNTRY = 'US'
 export const ODESLI_COUNTRY_PARAM = 'userCountry'
-// The link being looked up, for both Odesli and Spotify oEmbed.
-export const URL_PARAM = 'url'
+export const ODESLI_URL_PARAM = 'url'
+export const OEMBED_URL_PARAM = 'url'
 
 export const ITUNES_HOST = 'itunes.apple.com'
 export const ITUNES_LOOKUP_URL = `https://${ITUNES_HOST}/lookup`
@@ -69,3 +69,23 @@ export const LINE_BREAK = '\n'
 export const TITLE_ARTIST_SEPARATOR = ' — '
 export const SHARE_LABEL_SEPARATOR = ': '
 export const PATH_SEPARATOR = '/'
+
+export const JSONP_TIMEOUT_MS = 8000
+export const JSONP_CALLBACK_PREFIX = 'cp'
+export const ITUNES_CALLBACK_PARAM = 'callback'
+export const JSONP_TIMEOUT_ERROR = 'timeout'
+export const JSONP_NETWORK_ERROR = 'network'
+
+export const STATUS_IDLE = 'idle'
+export const STATUS_BUSY = 'busy'
+export const STATUS_DONE = 'done'
+export const STATUS_ERROR = 'error'
+
+// ?u=<link> auto-converts; the iOS Shortcut and shared Crossplay links use it.
+export const SHARE_URL_PARAM = 'u'
+
+export const INVALID_LINK_MESSAGE = 'That link isn’t a Spotify or Apple Music track or album.'
+export const LOOKING_UP_MESSAGE = 'Looking it up…'
+export const SHORT_LINK_MESSAGE =
+  'Couldn’t open that short link. In Spotify, tap Share → Copy link, then paste the full open.spotify.com link.'
+export const NOT_FOUND_MESSAGE = 'Couldn’t find that one. Check the link and try again.'

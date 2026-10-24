@@ -1,0 +1,88 @@
+import { vi } from 'vitest'
+
+// Stand-ins for the two things that cross the network boundary: fetch and
+// the JSONP <script> load. Everything else in the lookup path runs for real.
+
+export type Deferred<T> = {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason: unknown) => void
+}
+
+export function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+export const jsonResponse = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+const requestUrl = (input: RequestInfo | URL): string =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
+// Replaces global fetch. `respond` gets the request URL and returns the
+// response (or a promise of one, or throws/rejects for a network failure).
+export function mockFetch(respond: (url: string) => Response | Promise<Response>) {
+  const fn = vi.fn(async (input: RequestInfo | URL) => respond(requestUrl(input)))
+  vi.stubGlobal('fetch', fn)
+  return fn
+}
+
+export const fetchedUrls = (fn: ReturnType<typeof mockFetch>): string[] =>
+  fn.mock.calls.map(([input]) => requestUrl(input))
+
+// What a JSONP script load does: call the page's callback with data, fail
+// to load (the script's error event), or never answer.
+export type JsonpOutcome = { data: unknown } | 'error' | 'hang'
+
+export type JsonpLoad = { src: string; callback: string; script: HTMLScriptElement }
+
+let observer: MutationObserver | null = null
+let tracked: JsonpLoad[] = []
+
+// Watches the document for JSONP <script> tags. jsdom never loads them, so
+// this answers each one as `respond` says. The callback name is read from
+// the script URL's `callback` param, which is how the iTunes API names it.
+export function mockJsonp(respond: (src: string) => JsonpOutcome): JsonpLoad[] {
+  stopJsonp()
+  const loads: JsonpLoad[] = []
+  tracked = loads
+  observer = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (!(node instanceof HTMLScriptElement) || !node.src) continue
+        const callback = new URL(node.src).searchParams.get('callback') ?? ''
+        loads.push({ src: node.src, callback, script: node })
+        const outcome = respond(node.src)
+        if (outcome === 'hang') continue
+        if (outcome === 'error') node.dispatchEvent(new Event('error'))
+        else (window as unknown as Record<string, (d: unknown) => void>)[callback](outcome.data)
+      }
+    }
+  })
+  observer.observe(document, { childList: true, subtree: true })
+  return loads
+}
+
+// Also clears any load a test left unanswered, so the next test starts with
+// no stray script tags or callbacks.
+export function stopJsonp(): void {
+  observer?.disconnect()
+  observer = null
+  for (const { script, callback } of tracked) {
+    script.remove()
+    delete (window as unknown as Record<string, unknown>)[callback]
+  }
+  tracked = []
+}
+
+export const jsonpScriptsInDocument = (): HTMLScriptElement[] =>
+  Array.from(document.querySelectorAll('script')).filter((s) => s.src)
