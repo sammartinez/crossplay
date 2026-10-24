@@ -4,10 +4,21 @@ Paste a Spotify or Apple Music link and get matching Apple Music, Spotify and Yo
 
 ## Deploy to GitHub Pages
 
-1. Create a public repo named `crossplay`.
-2. Upload everything in this folder to the root of the repo.
-3. Open **Settings → Pages**, set **Source** to *Deploy from a branch*, choose `main` and `/ (root)`, then save.
+1. Create a public repo named `crossplay` and push this project to its `main` branch.
+2. Open **Settings → Pages** and set **Source** to *GitHub Actions*.
+3. Every push to `main` runs `.github/workflows/deploy.yml`, which installs dependencies, runs the tests, lint and typecheck, builds the site and deploys `dist/`. You can also run it by hand from the **Actions** tab.
 4. After a minute or so, the site is live at `https://<your-username>.github.io/crossplay/`.
+
+## Development
+
+You need Node 22.
+
+- `npm install` installs dependencies.
+- `npm run dev` starts the dev server at `http://localhost:5173/crossplay/`.
+- `npm test` runs the tests.
+- `npm run lint` runs ESLint.
+- `npm run typecheck` runs the TypeScript compiler without emitting files.
+- `npm run build` builds the site into `dist/`.
 
 ## Add to iPhone Home Screen
 
