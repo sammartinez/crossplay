@@ -33,6 +33,8 @@ let jsonpCount = 0
 export function jsonp<T>(url: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const callback = `${JSONP_CALLBACK_PREFIX}${++jsonpCount}`
+    const src = new URL(url)
+    src.searchParams.set(ITUNES_CALLBACK_PARAM, callback)
     const callbacks = window as unknown as Record<string, (body: T) => void>
     const script = document.createElement('script')
     const finish = () => {
@@ -52,8 +54,6 @@ export function jsonp<T>(url: string): Promise<T> {
       finish()
       reject(new Error(JSONP_NETWORK_ERROR))
     }
-    const src = new URL(url)
-    src.searchParams.set(ITUNES_CALLBACK_PARAM, callback)
     script.src = src.href
     document.head.appendChild(script)
   })
@@ -93,6 +93,8 @@ async function viaOdesliOrSource(parsed: ParsedLink): Promise<SourceLookup> {
   }
 }
 
+// Resolves on every lookup failure, with a null conversion, so callers need
+// no rejection path.
 export async function lookupLink(
   parsed: ParsedLink,
 ): Promise<{ conversion: Conversion | null; parsed: ParsedLink }> {
