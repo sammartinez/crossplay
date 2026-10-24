@@ -89,10 +89,8 @@ export function withArtistChoice(conversion: Conversion, candidate: ArtistCandid
     if (conversion.exact[key]) exactLinks[key] = conversion.links[key]
   }
   return withSearchFallbacks({
-    title: conversion.title,
+    ...conversion,
     artist: candidate.artist,
-    art: conversion.art,
     links: { ...exactLinks, [PLATFORM_APPLE]: candidate.url },
-    candidates: conversion.candidates,
   })
 }
