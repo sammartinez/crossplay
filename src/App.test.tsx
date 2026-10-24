@@ -6,7 +6,7 @@ import { SPOTIFY_OEMBED_URL } from './constants'
 import { odesliUrl } from './lib/lookup'
 import { fixture } from './test/fixtures'
 import { type Deferred, deferred, jsonResponse, mockFetch, mockJsonp } from './test/network'
-import { isShown } from './test/dom'
+import { expectNotShown, resultRow as row } from './test/dom'
 
 // AC11 (convert UI) and AC12 (alternates), driven through App's rendered
 // output with only fetch and the JSONP script load stood in.
@@ -46,15 +46,7 @@ const input = () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLInputElement
 const convertButton = () => screen.getByRole('button', { name: 'Convert' })
 const platformLink = (name: string) => screen.getByRole('link', { name })
 const queryPlatformLink = (name: string) => screen.queryByRole('link', { name })
-const row = (name: string) => {
-  const li = screen
-    .getAllByRole('listitem')
-    .find((item) => within(item).queryByRole('link', { name }))
-  if (!li) throw new Error(`no result row for ${name}`)
-  return li
-}
 const artwork = () => document.querySelector('main img')
-
 
 function submit(value: string) {
   fireEvent.change(input(), { target: { value } })
@@ -239,7 +231,7 @@ describe('App', () => {
       submit(SPOTIFY_TRACK_RAW)
       await waitForResult()
       const img = artwork()
-      expect(img !== null && isShown(img)).toBe(false)
+      expectNotShown(img)
     })
 
     it('shows one row per platform in Apple Music, Spotify, YouTube Music order', async () => {

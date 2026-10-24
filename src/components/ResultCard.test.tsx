@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import ResultCard from './ResultCard'
 import { withSearchFallbacks } from '../lib/links'
 import type { AppleAlt } from '../lib/types'
-import { isShown } from '../test/dom'
+import { expectNotShown, resultRow as row } from '../test/dom'
 
 // AC11 (result card) and AC12 (alternates), from a Conversion prop.
 
@@ -20,15 +20,6 @@ const CONVERSION = withSearchFallbacks({
   links: { spotify: 'https://open.spotify.com/track/abc', apple: ALTS[0].url },
   alts: ALTS,
 })
-
-const row = (name: string) => {
-  const li = screen
-    .getAllByRole('listitem')
-    .find((item) => within(item).queryByRole('link', { name }))
-  if (!li) throw new Error(`no result row for ${name}`)
-  return li
-}
-
 
 function renderCard(conversion = CONVERSION) {
   const onChooseAlt = vi.fn()
@@ -53,7 +44,7 @@ describe('ResultCard', () => {
   it('hides the artwork when there is none', () => {
     const { view } = renderCard({ ...CONVERSION, art: undefined })
     const img = view.container.querySelector('img')
-    expect(img !== null && isShown(img)).toBe(false)
+    expectNotShown(img)
   })
 
   it('links each platform in a new tab with rel="noopener"', () => {
