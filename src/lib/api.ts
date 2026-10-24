@@ -87,27 +87,25 @@ async function viaSource(parsed: ParsedLink): Promise<SourceLookup> {
   return viaSpotify(parsed).catch(() => ({ lookup: null, parsed }))
 }
 
-// A failed hop keeps the first response: it already has a title and links,
-// and the platforms the hop would fill fall back to searches.
-async function withOdesliHop(body: OdesliResponse): Promise<Lookup> {
-  const first = fromOdesli(body)
-  const hopUrl = odesliHopUrl(body)
-  if (!hopUrl) return first
-  return fetchJson<OdesliResponse>(hopUrl).then(
-    (hop) => withHopLinks(first, fromOdesli(hop)),
-    () => first,
-  )
-}
+// A failed or malformed hop keeps the first response: it already has a title
+// and links, and the platforms the hop would fill fall back to searches.
+const withOdesliHop = (first: Lookup, hopUrl: string): Promise<Lookup> =>
+  fetchJson<OdesliResponse>(hopUrl)
+    .then((hop) => withHopLinks(first, fromOdesli(hop)))
+    .catch(() => first)
 
 async function viaOdesliOrSource(parsed: ParsedLink): Promise<SourceLookup> {
   const url = odesliUrl(parsed.link)
-  let body: OdesliResponse
+  let first: Lookup
+  let hopUrl: string | null
   try {
-    body = await fetchJson<OdesliResponse>(url).catch(() => fetchJson<OdesliResponse>(url))
+    const body = await fetchJson<OdesliResponse>(url).catch(() => fetchJson<OdesliResponse>(url))
+    first = fromOdesli(body)
+    hopUrl = odesliHopUrl(body)
   } catch {
     return viaSource(parsed)
   }
-  return { lookup: await withOdesliHop(body), parsed }
+  return { lookup: hopUrl ? await withOdesliHop(first, hopUrl) : first, parsed }
 }
 
 // Resolves on every lookup failure, with a null conversion, so callers need
