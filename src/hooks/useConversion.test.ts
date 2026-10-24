@@ -237,6 +237,29 @@ describe('useConversion', () => {
       expect(result.current.conversion?.title).toBe('A Night At The Opera')
     })
 
+    it('stays busy with the invalid-link error when invalid input arrives during a lookup', () => {
+      deferOdesli()
+      const { result } = renderHook(() => useConversion())
+      act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+      act(() => result.current.convert('not a link'))
+      expect(result.current.status).toBe('busy')
+      expect(result.current.isError).toBe(true)
+      expect(result.current.message).toBe(INVALID_LINK_MESSAGE)
+      expect(result.current.conversion).toBeNull()
+    })
+
+    it('settles on the pending lookup result after invalid input arrived during it', async () => {
+      const { respond } = deferOdesli()
+      const { result } = renderHook(() => useConversion())
+      act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+      act(() => result.current.convert('not a link'))
+      await respond(SPOTIFY_TRACK.link, fixture('odesli-track.json'))
+      expect(result.current.status).toBe('done')
+      expect(result.current.conversion).toEqual(ODESLI_TRACK())
+      expect(result.current.message).toBe('')
+      expect(result.current.isError).toBe(false)
+    })
+
     it('ignores a repeat convert of the same link while it is busy', () => {
       const { fetchMock } = deferOdesli()
       const { result } = renderHook(() => useConversion())
