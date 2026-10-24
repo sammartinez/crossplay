@@ -68,6 +68,8 @@ const status = () => screen.getByRole('status')
 const input = () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLInputElement
 const convertButton = () => screen.getByRole('button', { name: 'Convert' })
 const platformLink = (name: string) => screen.getByRole('link', { name })
+// A row's platform link, by name, so a second link in the row is not picked up.
+const PLATFORM_NAME = /^(Apple Music|Spotify|YouTube Music)$/
 const queryPlatformLink = (name: string) => screen.queryByRole('link', { name })
 const artwork = () => document.querySelector('main img')
 
@@ -265,7 +267,7 @@ describe('App', () => {
       await waitForResult()
       const names = screen
         .getAllByRole('listitem')
-        .map((li) => within(li).getByRole('link').textContent)
+        .map((li) => within(li).getByRole('link', { name: PLATFORM_NAME }).textContent)
       expect(names).toEqual(['Apple Music', 'Spotify', 'YouTube Music'])
     })
 
@@ -611,6 +613,63 @@ describe('App', () => {
       expect(screen.getByText(ODESLI_TITLE)).toBeInTheDocument()
       expect(screen.getByText('Queen')).toBeInTheDocument()
       expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+    })
+  })
+
+  // PLAN-003 AC1, from odesli-apple-dirt.json (first response, no Spotify)
+  // and odesli-ytm-dirt.json (the hop for its YouTube Music link).
+  describe('the reported Apple link whose Odesli response lacks Spotify', () => {
+    const DIRT_RAW = 'https://music.apple.com/us/album/dirt/6811936164?i=6811936165'
+    const DIRT_YTM = 'https://music.youtube.com/watch?v=PLCHLDRdirt'
+    const DIRT_LINKS = {
+      'Apple Music':
+        'https://geo.music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m',
+      Spotify: 'https://open.spotify.com/track/0PlaceholderDirtTrack0',
+      'YouTube Music': DIRT_YTM,
+    }
+    const DIRT_ART =
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/aa/bb/cc/aabbccdd-placeholder/source/512x512bb.jpg'
+
+    async function showDirt() {
+      mockFetch((url) =>
+        url === odesliUrl(DIRT_RAW)
+          ? jsonResponse(fixture('odesli-apple-dirt.json'))
+          : url === odesliUrl(DIRT_YTM)
+            ? jsonResponse(fixture('odesli-ytm-dirt.json'))
+            : Promise.reject(new Error(`unexpected fetch ${url}`)),
+      )
+      mockJsonp(() => 'error')
+      render(<App />)
+      submit(DIRT_RAW)
+      await waitForResult()
+    }
+
+    it('links Spotify to the track Odesli found from the YouTube Music link, tagged EXACT', async () => {
+      await showDirt()
+      expect(platformLink('Spotify')).toHaveAttribute('href', DIRT_LINKS.Spotify)
+      expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
+      expect(within(row('Spotify')).queryByText('SEARCH')).not.toBeInTheDocument()
+    })
+
+    it.each(['Apple Music', 'YouTube Music'] as const)(
+      "links %s to the first Odesli response's URL, tagged EXACT",
+      async (name) => {
+        await showDirt()
+        expect(platformLink(name)).toHaveAttribute('href', DIRT_LINKS[name])
+        expect(within(row(name)).getByText('EXACT')).toBeInTheDocument()
+      },
+    )
+
+    it('shows the title, artist and artwork from the first Odesli response', async () => {
+      await showDirt()
+      expect(screen.getByText('Dirt')).toBeInTheDocument()
+      expect(screen.getByText('Placeholder Artist')).toBeInTheDocument()
+      expect(artwork()).toHaveAttribute('src', DIRT_ART)
+    })
+
+    it('shows no "Search in Spotify app" link', async () => {
+      await showDirt()
+      expect(queryPlatformLink('Search in Spotify app')).not.toBeInTheDocument()
     })
   })
 

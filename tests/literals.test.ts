@@ -27,6 +27,7 @@ const UI_TEXT = {
   COPY_MANUAL_LABEL: 'Copy it below',
   SHARE_LABEL: 'Copy share text',
   FALLBACK_TEXTAREA_LABEL: 'Text to copy',
+  SPOTIFY_APP_SEARCH_LABEL: 'Search in Spotify app',
 }
 
 // The plan lets the implementer rename ALT_SEPARATOR to CANDIDATE_SEPARATOR.

@@ -1,0 +1,48 @@
+{
+  "_comment": "Odesli response for a Spotify link to Dirt that lacks appleMusic (AC4). The artist name, Spotify track ID and YouTube video ID are placeholders.",
+  "entityUniqueId": "SPOTIFY_SONG::0PlaceholderDirtTrack0",
+  "userCountry": "US",
+  "pageUrl": "https://song.link/s/0PlaceholderDirtTrack0",
+  "entitiesByUniqueId": {
+    "SPOTIFY_SONG::0PlaceholderDirtTrack0": {
+      "id": "0PlaceholderDirtTrack0",
+      "type": "song",
+      "title": "Dirt",
+      "artistName": "Placeholder Artist",
+      "thumbnailUrl": "https://i.scdn.co/image/ab67616d0000b273placeholderdirt000000000",
+      "thumbnailWidth": 640,
+      "thumbnailHeight": 640,
+      "apiProvider": "spotify",
+      "platforms": ["spotify"]
+    },
+    "YOUTUBE_VIDEO::PLCHLDRdirt": {
+      "id": "PLCHLDRdirt",
+      "type": "song",
+      "title": "Dirt",
+      "artistName": "Placeholder Artist - Topic",
+      "thumbnailUrl": "https://i.ytimg.com/vi/PLCHLDRdirt/hqdefault.jpg",
+      "thumbnailWidth": 480,
+      "thumbnailHeight": 360,
+      "apiProvider": "youtube",
+      "platforms": ["youtube", "youtubeMusic"]
+    }
+  },
+  "linksByPlatform": {
+    "spotify": {
+      "country": "US",
+      "url": "https://open.spotify.com/track/0PlaceholderDirtTrack0",
+      "nativeAppUriDesktop": "spotify:track:0PlaceholderDirtTrack0",
+      "entityUniqueId": "SPOTIFY_SONG::0PlaceholderDirtTrack0"
+    },
+    "youtube": {
+      "country": "US",
+      "url": "https://www.youtube.com/watch?v=PLCHLDRdirt",
+      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRdirt"
+    },
+    "youtubeMusic": {
+      "country": "US",
+      "url": "https://music.youtube.com/watch?v=PLCHLDRdirt",
+      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRdirt"
+    }
+  }
+}

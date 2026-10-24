@@ -1,0 +1,53 @@
+{
+  "_comment": "A hop response for the YouTube Music link from odesli-apple-dirt.json that disagrees with the first response: different Apple and YouTube Music URLs, title and artist. Every ID and name here is a placeholder.",
+  "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRlive",
+  "userCountry": "US",
+  "pageUrl": "https://song.link/y/PLCHLDRlive",
+  "entitiesByUniqueId": {
+    "YOUTUBE_VIDEO::PLCHLDRlive": {
+      "id": "PLCHLDRlive",
+      "type": "song",
+      "title": "Dirt (Live)",
+      "artistName": "Some Other Artist",
+      "thumbnailUrl": "https://i.ytimg.com/vi/PLCHLDRlive/hqdefault.jpg",
+      "thumbnailWidth": 480,
+      "thumbnailHeight": 360,
+      "apiProvider": "youtube",
+      "platforms": ["youtube", "youtubeMusic"]
+    },
+    "SPOTIFY_SONG::0PlaceholderDirtLive00": {
+      "id": "0PlaceholderDirtLive00",
+      "type": "song",
+      "title": "Dirt (Live)",
+      "artistName": "Some Other Artist",
+      "thumbnailUrl": "https://i.scdn.co/image/ab67616d0000b273placeholderdirtlive0000",
+      "thumbnailWidth": 640,
+      "thumbnailHeight": 640,
+      "apiProvider": "spotify",
+      "platforms": ["spotify"]
+    }
+  },
+  "linksByPlatform": {
+    "appleMusic": {
+      "country": "US",
+      "url": "https://geo.music.apple.com/us/album/_/6899999990?i=6899999991&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m",
+      "entityUniqueId": "ITUNES_SONG::6899999991"
+    },
+    "spotify": {
+      "country": "US",
+      "url": "https://open.spotify.com/track/0PlaceholderDirtLive00",
+      "nativeAppUriDesktop": "spotify:track:0PlaceholderDirtLive00",
+      "entityUniqueId": "SPOTIFY_SONG::0PlaceholderDirtLive00"
+    },
+    "youtube": {
+      "country": "US",
+      "url": "https://www.youtube.com/watch?v=PLCHLDRlive",
+      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRlive"
+    },
+    "youtubeMusic": {
+      "country": "US",
+      "url": "https://music.youtube.com/watch?v=PLCHLDRlive",
+      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRlive"
+    }
+  }
+}

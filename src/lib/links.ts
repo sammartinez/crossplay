@@ -11,6 +11,7 @@ import {
   PLATFORMS,
   SEARCH_URL_BASES,
   SLUG_SEPARATOR_RE,
+  SPOTIFY_APP_SEARCH_URI,
   SPOTIFY_HOST_RE,
   SPOTIFY_ORIGIN,
   SPOTIFY_SHORT_HOST,
@@ -71,8 +72,14 @@ export function parseLink(raw: string): ParsedLink | null {
 export const searchUrl = (platform: Platform, query: string): string =>
   SEARCH_URL_BASES[platform] + encodeURIComponent(query)
 
+export const searchQuery = ({ title, artist }: Pick<Lookup, 'title' | 'artist'>): string =>
+  [title, artist].filter(Boolean).join(WORD_SEPARATOR)
+
+export const spotifyAppSearchUri = (query: string): string =>
+  SPOTIFY_APP_SEARCH_URI + encodeURIComponent(query)
+
 export function withSearchFallbacks(lookup: Lookup): Conversion {
-  const query = [lookup.title, lookup.artist].filter(Boolean).join(WORD_SEPARATOR)
+  const query = searchQuery(lookup)
   const links = {} as Conversion['links']
   const exact = {} as Conversion['exact']
   for (const { key } of PLATFORMS) {
@@ -80,7 +87,8 @@ export function withSearchFallbacks(lookup: Lookup): Conversion {
     exact[key] = !!given
     links[key] = given || searchUrl(key, query)
   }
-  return { ...lookup, links, exact }
+  const spotifyAppSearch = exact[PLATFORM_SPOTIFY] ? undefined : spotifyAppSearchUri(query)
+  return { ...lookup, links, exact, spotifyAppSearch }
 }
 
 export function withArtistChoice(conversion: Conversion, candidate: ArtistCandidate): Conversion {

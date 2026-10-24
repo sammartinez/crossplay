@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { withSearchFallbacks } from '../../src/lib/links'
 import { shareText } from '../../src/lib/share'
 
 const links = {
@@ -37,5 +38,16 @@ describe('shareText', () => {
       links: { ...links, ytm: 'https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen' },
     })
     expect(text.endsWith('YouTube Music: https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen')).toBe(true)
+  })
+
+  it('never contains a spotify: URI when Spotify is a search', () => {
+    const conversion = withSearchFallbacks({
+      title: 'Bohemian Rhapsody',
+      artist: 'Queen',
+      links: { apple: links.apple, ytm: links.ytm },
+    })
+    const text = shareText(conversion)
+    expect(text).toContain('Spotify: https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen')
+    expect(text).not.toContain('spotify:')
   })
 })
