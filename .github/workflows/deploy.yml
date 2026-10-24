@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -28,7 +26,6 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
-      - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
@@ -36,6 +33,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Only the deploy job may publish; the build job runs npm ci and tests.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
