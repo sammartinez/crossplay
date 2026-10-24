@@ -5,12 +5,14 @@ import {
   fromSpotifyFallback,
   itunesLookupUrl,
   itunesSearchUrl,
+  odesliHopUrl,
   odesliUrl,
   resolveSpotifyShortLink,
   spotifyOembedUrl,
+  withHopLinks,
 } from '../../src/lib/lookup'
-import type { ParsedLink } from '../../src/lib/types'
-import { fixture } from '../support/fixtures'
+import type { Lookup, OdesliResponse, ParsedLink } from '../../src/lib/types'
+import { fixture, odesliWithout } from '../support/fixtures'
 
 const SPOTIFY_TRACK: ParsedLink = {
   src: 'spotify',
@@ -395,5 +397,168 @@ describe('fromSpotifyFallback', () => {
     expect(lookup.artist).toBe('')
     expect(lookup.links).toEqual({ spotify: SPOTIFY_TRACK.link })
     expect(lookup.candidates ?? []).toEqual([])
+  })
+})
+
+// PLAN-003 T1: one Odesli hop to fill missing platform links.
+// From odesli-apple-dirt.json (the reported case) and odesli-ytm-dirt.json.
+const DIRT_APPLE =
+  'https://geo.music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m'
+const DIRT_YTM = 'https://music.youtube.com/watch?v=PLCHLDRdirt'
+const DIRT_YOUTUBE = 'https://www.youtube.com/watch?v=PLCHLDRdirt'
+const DIRT_SPOTIFY = 'https://open.spotify.com/track/0PlaceholderDirtTrack0'
+const DIRT_ART =
+  'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/aa/bb/cc/aabbccdd-placeholder/source/512x512bb.jpg'
+
+const HOP_SOURCE_URLS = {
+  youtubeMusic: 'https://music.youtube.com/watch?v=hopYtMusic1',
+  youtube: 'https://www.youtube.com/watch?v=hopYouTube01',
+  deezer: 'https://www.deezer.com/track/1234567890',
+  tidal: 'https://listen.tidal.com/track/123456789',
+  amazonMusic: 'https://music.amazon.com/albums/B0PLACEHOLD?trackAsin=B0PLACETRAK',
+}
+
+const BODY_URLS: Record<string, string> = {
+  ...HOP_SOURCE_URLS,
+  appleMusic: DIRT_APPLE,
+  spotify: DIRT_SPOTIFY,
+}
+
+// An Odesli body with a title and exactly the given platform links.
+const odesliBody = (...platforms: string[]): OdesliResponse =>
+  ({
+    entityUniqueId: 'X',
+    entitiesByUniqueId: { X: { title: 'Song', artistName: 'Band' } },
+    linksByPlatform: Object.fromEntries(platforms.map((p) => [p, { url: BODY_URLS[p] }])),
+  }) as OdesliResponse
+
+describe('odesliHopUrl', () => {
+  it("returns the Odesli URL for the YouTube Music link in the reported Apple response, which lacks Spotify", () => {
+    expect(odesliHopUrl(fixture('odesli-apple-dirt.json'))).toBe(odesliUrl(DIRT_YTM))
+  })
+
+  it('returns the Odesli URL for the YouTube Music link when a Spotify response lacks Apple Music', () => {
+    expect(odesliHopUrl(fixture('odesli-spotify-dirt-no-apple.json'))).toBe(odesliUrl(DIRT_YTM))
+  })
+
+  it('returns null when the response has Apple Music, Spotify and YouTube Music links', () => {
+    expect(odesliHopUrl(fixture('odesli-track.json'))).toBeNull()
+  })
+
+  it('returns null when a platform is missing but there is no hop-source link', () => {
+    expect(odesliHopUrl(fixture('odesli-partial.json'))).toBeNull()
+  })
+
+  it('returns null for an empty body', () => {
+    expect(odesliHopUrl(fixture('odesli-empty.json'))).toBeNull()
+  })
+
+  it('prefers youtubeMusic over youtube, deezer, tidal and amazonMusic', () => {
+    const body = odesliBody('appleMusic', 'amazonMusic', 'tidal', 'deezer', 'youtube', 'youtubeMusic')
+    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.youtubeMusic))
+  })
+
+  it('uses youtube when there is no youtubeMusic link', () => {
+    const body = odesliBody('appleMusic', 'amazonMusic', 'tidal', 'deezer', 'youtube')
+    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.youtube))
+  })
+
+  it('uses the youtube link from the reported response when its youtubeMusic link is removed', () => {
+    const body = odesliWithout<OdesliResponse>('odesli-apple-dirt.json', 'youtubeMusic')
+    expect(odesliHopUrl(body)).toBe(odesliUrl(DIRT_YOUTUBE))
+  })
+
+  it('uses deezer when there is no YouTube link of either kind', () => {
+    const body = odesliBody('appleMusic', 'amazonMusic', 'tidal', 'deezer')
+    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.deezer))
+  })
+
+  it('uses tidal before amazonMusic', () => {
+    const body = odesliBody('appleMusic', 'amazonMusic', 'tidal')
+    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.tidal))
+  })
+
+  it('uses amazonMusic when it is the only hop-source link', () => {
+    const body = odesliBody('appleMusic', 'amazonMusic')
+    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.amazonMusic))
+  })
+
+  it('never uses the appleMusic or spotify link as the hop source', () => {
+    expect(odesliHopUrl(odesliBody('appleMusic', 'spotify'))).toBeNull()
+  })
+
+  it('returns null when the reported response has no YouTube links either', () => {
+    const body = odesliWithout<OdesliResponse>('odesli-apple-dirt.json', 'youtubeMusic', 'youtube')
+    expect(odesliHopUrl(body)).toBeNull()
+  })
+
+  it('hops when only YouTube Music is missing and another hop source exists', () => {
+    const body = odesliBody('appleMusic', 'spotify', 'deezer')
+    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.deezer))
+  })
+})
+
+describe('withHopLinks', () => {
+  const first = () => fromOdesli(fixture('odesli-apple-dirt.json'))
+
+  it('fills the Spotify link the first lookup lacks from the hop', () => {
+    const merged = withHopLinks(first(), fromOdesli(fixture('odesli-ytm-dirt.json')))
+    expect(merged.links).toEqual({ apple: DIRT_APPLE, spotify: DIRT_SPOTIFY, ytm: DIRT_YTM })
+  })
+
+  it('keeps the first Apple Music and YouTube Music links when the hop has different ones', () => {
+    const merged = withHopLinks(first(), fromOdesli(fixture('odesli-ytm-dirt-mismatch.json')))
+    expect(merged.links.apple).toBe(DIRT_APPLE)
+    expect(merged.links.ytm).toBe(DIRT_YTM)
+    expect(merged.links.spotify).toBe('https://open.spotify.com/track/0PlaceholderDirtLive00')
+  })
+
+  it("keeps the first lookup's title, artist and art when the hop's differ", () => {
+    const merged = withHopLinks(first(), fromOdesli(fixture('odesli-ytm-dirt-mismatch.json')))
+    expect(merged.title).toBe('Dirt')
+    expect(merged.artist).toBe('Placeholder Artist')
+    expect(merged.art).toBe(DIRT_ART)
+  })
+
+  it('takes no title, artist or art from the hop even when the first lookup has none', () => {
+    const bare: Lookup = { links: { apple: DIRT_APPLE } }
+    const merged = withHopLinks(bare, fromOdesli(fixture('odesli-ytm-dirt.json')))
+    expect(merged.title).toBeUndefined()
+    expect(merged.artist).toBeUndefined()
+    expect(merged.art).toBeUndefined()
+  })
+
+  it("keeps the first lookup's candidates", () => {
+    const candidates = [{ artist: 'Placeholder Artist', title: 'Dirt', url: DIRT_APPLE }]
+    const merged = withHopLinks({ ...first(), candidates }, fromOdesli(fixture('odesli-ytm-dirt.json')))
+    expect(merged.candidates).toEqual(candidates)
+  })
+
+  it('leaves a platform missing when the hop lacks it too', () => {
+    const hop = fromOdesli(odesliWithout('odesli-ytm-dirt.json', 'spotify'))
+    const merged = withHopLinks(first(), hop)
+    expect(merged.links.spotify).toBeUndefined()
+    expect(merged.links.apple).toBe(DIRT_APPLE)
+    expect(merged.links.ytm).toBe(DIRT_YTM)
+  })
+
+  it('fills a missing Apple Music link for a Spotify-source lookup', () => {
+    const spotifyFirst = fromOdesli(fixture('odesli-spotify-dirt-no-apple.json'))
+    const merged = withHopLinks(spotifyFirst, fromOdesli(fixture('odesli-ytm-dirt.json')))
+    expect(merged.links).toEqual({ apple: DIRT_APPLE, spotify: DIRT_SPOTIFY, ytm: DIRT_YTM })
+  })
+
+  it('returns the first lookup unchanged when the hop has no links', () => {
+    expect(withHopLinks(first(), fromOdesli(fixture('odesli-empty.json')))).toEqual(first())
+  })
+
+  it('does not mutate either input', () => {
+    const a = first()
+    const b = fromOdesli(fixture('odesli-ytm-dirt-mismatch.json'))
+    const aBefore = structuredClone(a)
+    const bBefore = structuredClone(b)
+    withHopLinks(a, b)
+    expect(a).toEqual(aBefore)
+    expect(b).toEqual(bBefore)
   })
 })
