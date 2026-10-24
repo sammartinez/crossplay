@@ -1,6 +1,6 @@
 window.TEAM = {
   "project": "crossplay",
-  "updated": "2026-10-24T02:14:13Z",
+  "updated": "2026-10-24T14:33:41Z",
   "plans": [
     {
       "id": "PLAN-001",
@@ -15,6 +15,19 @@ window.TEAM = {
         "plans/PLAN-001/screens/result-dark.png",
         "plans/PLAN-001/screens/invalid-light.png",
         "plans/PLAN-001/screens/invalid-dark.png"
+      ]
+    },
+    {
+      "id": "PLAN-002",
+      "title": "Spotify artist fix + tests layout",
+      "status": "done",
+      "created": "2026-10-24T02:57:03Z",
+      "approved": "2026-10-24T02:57:03Z",
+      "screens": [
+        "plans/PLAN-002/screens/fallback-light.png",
+        "plans/PLAN-002/screens/fallback-dark.png",
+        "plans/PLAN-002/screens/picked-light.png",
+        "plans/PLAN-002/screens/picked-dark.png"
       ]
     }
   ],
@@ -216,6 +229,68 @@ window.TEAM = {
       "needs_user": false,
       "opened": "2026-10-24T00:48:26Z",
       "updated": "2026-10-24T02:05:05Z"
+    },
+    {
+      "plan": "PLAN-002",
+      "size": "standard",
+      "reviewer": "sr-engineer",
+      "stage": "done",
+      "second_round": 1,
+      "routing": null,
+      "round": 1,
+      "gate_attempts": 1,
+      "blocking": 0,
+      "nits": 1,
+      "findings": {
+        "TEST": 1
+      },
+      "screens": [],
+      "needs_user": false,
+      "opened": "2026-10-24T02:57:03Z",
+      "updated": "2026-10-24T14:19:14Z",
+      "id": "MR-007",
+      "task": "T1",
+      "title": "Move tests under tests/ mirroring src",
+      "branch": "mr/007-tests-layout",
+      "complexity": "low",
+      "author": "engineer",
+      "second_reviewer": "principal",
+      "sets_pattern": true,
+      "status": "merged"
+    },
+    {
+      "plan": "PLAN-002",
+      "size": "standard",
+      "reviewer": "principal",
+      "stage": "done",
+      "second_round": 0,
+      "routing": null,
+      "round": 2,
+      "gate_attempts": 2,
+      "blocking": 0,
+      "nits": 1,
+      "findings": {
+        "TEST": 1,
+        "ARCH": 1
+      },
+      "screens": [
+        "mrs/MR-008/screens/fallback-light.png",
+        "mrs/MR-008/screens/fallback-dark.png",
+        "mrs/MR-008/screens/picked-light.png",
+        "mrs/MR-008/screens/picked-dark.png"
+      ],
+      "needs_user": false,
+      "opened": "2026-10-24T02:57:03Z",
+      "updated": "2026-10-24T14:30:30Z",
+      "id": "MR-008",
+      "task": "T2",
+      "title": "Odesli retry; honest Spotify fallback with artist picker",
+      "branch": "mr/008-artist-picker",
+      "complexity": "medium",
+      "author": "sr-engineer",
+      "second_reviewer": null,
+      "sets_pattern": false,
+      "status": "merged"
     }
   ],
   "events": [
@@ -568,6 +643,111 @@ window.TEAM = {
       "actor": "user",
       "type": "staged",
       "note": "PLAN-001 result staged on branch staged"
+    },
+    {
+      "at": "2026-10-24T02:57:03Z",
+      "mr": "MR-007",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "plan approved; QA writing tests"
+    },
+    {
+      "at": "2026-10-24T02:59:28Z",
+      "mr": "MR-007",
+      "actor": "qa",
+      "type": "tests",
+      "note": "layout tests red (setup path); 39 files moved"
+    },
+    {
+      "at": "2026-10-24T03:00:16Z",
+      "mr": "MR-007",
+      "actor": "orchestrator",
+      "type": "gates",
+      "note": "green: 392 tests"
+    },
+    {
+      "at": "2026-10-24T14:18:17Z",
+      "mr": "MR-007",
+      "actor": "sr-engineer",
+      "type": "review",
+      "note": "approved: 0 blocking, 0 nits"
+    },
+    {
+      "at": "2026-10-24T14:18:17Z",
+      "mr": "MR-007",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "principal second review"
+    },
+    {
+      "at": "2026-10-24T14:19:14Z",
+      "mr": "MR-007",
+      "actor": "principal",
+      "type": "review",
+      "note": "second pass approved: 1 nit"
+    },
+    {
+      "at": "2026-10-24T14:19:14Z",
+      "mr": "MR-007",
+      "actor": "orchestrator",
+      "type": "merge",
+      "note": "merged into team/PLAN-002"
+    },
+    {
+      "at": "2026-10-24T14:19:14Z",
+      "mr": "MR-008",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "QA writing tests"
+    },
+    {
+      "at": "2026-10-24T14:25:37Z",
+      "mr": "MR-008",
+      "actor": "qa",
+      "type": "tests",
+      "note": "64 failing acceptance tests incl. reported case"
+    },
+    {
+      "at": "2026-10-24T14:29:05Z",
+      "mr": "MR-008",
+      "actor": "principal",
+      "type": "review",
+      "note": "changes requested: 1 blocking (missing gate record), 1 nit"
+    },
+    {
+      "at": "2026-10-24T14:30:10Z",
+      "mr": "MR-008",
+      "actor": "sr-engineer",
+      "type": "response",
+      "note": "N1 applied (2c290f2); B1 record fixed"
+    },
+    {
+      "at": "2026-10-24T14:30:30Z",
+      "mr": "MR-008",
+      "actor": "principal",
+      "type": "review",
+      "note": "round 2 approved"
+    },
+    {
+      "at": "2026-10-24T14:30:30Z",
+      "mr": "MR-008",
+      "actor": "orchestrator",
+      "type": "merge",
+      "note": "merged into team/PLAN-002"
+    },
+    {
+      "at": "2026-10-24T14:30:56Z",
+      "mr": null,
+      "actor": "orchestrator",
+      "type": "plan",
+      "note": "all MRs merged; awaiting final approval"
+    },
+    {
+      "at": "2026-10-24T14:33:41Z",
+      "mr": null,
+      "actor": "orchestrator",
+      "type": "plan",
+      "note": "user approved; merged and PR opened"
     }
   ]
 };
