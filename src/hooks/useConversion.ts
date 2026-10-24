@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   INVALID_LINK_MESSAGE,
   LOOKING_UP_MESSAGE,
@@ -46,7 +46,20 @@ export function useConversion() {
   })
   // busyLink is set while the latest lookup runs, so a paste followed by
   // Convert on the same link doesn't start a second one.
-  const latest = useRef<{ runId: number; busyLink: string | null }>({ runId: 0, busyLink: null })
+  // mounted drops results that land after unmount, so they don't rewrite the page URL.
+  const latest = useRef<{ runId: number; busyLink: string | null; mounted: boolean }>({
+    runId: 0,
+    busyLink: null,
+    mounted: false,
+  })
+
+  useEffect(() => {
+    const run = latest.current
+    run.mounted = true
+    return () => {
+      run.mounted = false
+    }
+  }, [])
 
   const convert = useCallback((raw: string) => {
     const parsed = parseLink(raw)
@@ -63,7 +76,7 @@ export function useConversion() {
     latest.current.busyLink = parsed.link
     setState((s) => ({ ...s, status: STATUS_BUSY, message: LOOKING_UP_MESSAGE, isError: false }))
     lookupLink(parsed).then(({ conversion, parsed: looked }) => {
-      if (runId !== latest.current.runId) return
+      if (runId !== latest.current.runId || !latest.current.mounted) return
       latest.current.busyLink = null
       if (!conversion) {
         setState(failed(failureMessage(looked)))
