@@ -1,0 +1,55 @@
+/* One narrow column: input, then a single result card. */
+:root{
+  --bg:#f4f5f7; --card:#fff; --fg:#16181d; --muted:#6b7080; --line:#e3e5ea;
+  --accent:#d9730d; --ok:#1f8a4c;
+  --sans:"Instrument Sans",system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+/* Dark palette applies when the system is dark and the user has not chosen light
+   (no data-theme), or whenever the user has chosen dark. Light is the :root default. */
+@media (prefers-color-scheme:dark){[data-theme]:not([data-theme="light"]),:root:not([data-theme]){--bg:#111317;--card:#1a1d22;--fg:#eceef2;--muted:#8d93a1;--line:#2a2e36;--accent:#f39a3d;--ok:#4cc27e;color-scheme:dark}}
+[data-theme="dark"]{--bg:#111317;--card:#1a1d22;--fg:#eceef2;--muted:#8d93a1;--line:#2a2e36;--accent:#f39a3d;--ok:#4cc27e;color-scheme:dark}
+[data-theme="light"]{color-scheme:light}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+main{max-width:520px;margin:0 auto;padding:calc(48px + env(safe-area-inset-top,0px)) 16px calc(64px + env(safe-area-inset-bottom,0px));display:grid;gap:20px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em}
+.sub{margin:2px 0 0;color:var(--muted);font-size:14px}
+button{font:inherit;color:inherit;cursor:pointer}
+.ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:13px;color:var(--muted)}
+.ghost:hover{color:var(--fg)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+form{display:flex;gap:8px}
+input{flex:1;min-width:0;font:13px var(--mono);padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+.primary{border:0;border-radius:10px;padding:0 16px;background:var(--fg);color:var(--bg);font-weight:600}
+.primary:disabled{opacity:.5;cursor:default}
+
+/* crossfader: knob slides while a lookup runs */
+.fader{height:4px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
+.fader::after{content:"";position:absolute;top:0;left:0;width:28%;height:100%;border-radius:2px;background:var(--accent);opacity:0}
+.busy .fader::after{opacity:1;animation:fade 1s ease-in-out infinite alternate}
+@keyframes fade{to{left:72%}}
+@media (prefers-reduced-motion:reduce){.busy .fader::after{animation:none;left:36%}}
+
+.msg{margin:0;color:var(--muted);font-size:14px}
+.msg.err{color:var(--accent)}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:14px}
+.track{display:flex;gap:12px;align-items:center}
+.track img{width:56px;height:56px;border-radius:6px;object-fit:cover;background:var(--line);flex:none}
+.track div{min-width:0}
+.title{font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.artist{color:var(--muted);font-size:14px}
+ul{list-style:none;margin:0;padding:0;display:grid}
+li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+li a{flex:1;color:var(--fg);text-decoration:none;font-weight:500}
+li a:hover{text-decoration:underline}
+.tag{font:11px var(--mono);letter-spacing:.04em;color:var(--muted)}
+.tag.exact{color:var(--ok)}
+.alts{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.alts button{background:none;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--fg)}
+textarea{width:100%;font:12px/1.5 var(--mono);padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);resize:vertical}
+.share{width:100%;padding:12px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:600}

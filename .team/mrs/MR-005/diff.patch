@@ -1,0 +1,790 @@
+diff --git a/src/App.test.tsx b/src/App.test.tsx
+index c686ae8..4d31319 100644
+--- a/src/App.test.tsx
++++ b/src/App.test.tsx
+@@ -6,9 +6,10 @@ import { SPOTIFY_OEMBED_URL } from './constants'
+ import { odesliUrl } from './lib/lookup'
+ import { fixture } from './test/fixtures'
+ import { type Deferred, deferred, jsonResponse, mockFetch, mockJsonp } from './test/network'
++import { expectedShareText, stubClipboard } from './test/clipboard'
+ import { expectNotShown, resultRow as row } from './test/dom'
+ 
+-// AC11 (convert UI) and AC12 (alternates), driven through App's rendered
++// AC11 (convert UI), AC12 (alternates) and AC13 (copy and share), driven through App's rendered
+ // output with only fetch and the JSONP script load stood in.
+ 
+ const PLACEHOLDER = 'https://open.spotify.com/track/…'
+@@ -453,4 +454,35 @@ describe('App', () => {
+       expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
+     })
+   })
++
++  describe('copy and share', () => {
++    it('copies the converted share text with "Copy share text"', async () => {
++      odesliTrack()
++      const writeText = stubClipboard('ok')
++      render(<App />)
++      submit(SPOTIFY_TRACK_RAW)
++      await waitForResult()
++      fireEvent.click(screen.getByRole('button', { name: 'Copy share text' }))
++      await waitFor(() =>
++        expect(writeText).toHaveBeenCalledWith(
++          expectedShareText(`${ODESLI_TITLE} — Queen`, {
++            apple: ODESLI_LINKS['Apple Music'],
++            spotify: ODESLI_LINKS.Spotify,
++            ytm: ODESLI_LINKS['YouTube Music'],
++          }),
++        ),
++      )
++      expect(await screen.findByRole('button', { name: 'Copied' })).toHaveClass('share')
++    })
++
++    it('copies a row link with its Copy button', async () => {
++      odesliTrack()
++      const writeText = stubClipboard('ok')
++      render(<App />)
++      submit(SPOTIFY_TRACK_RAW)
++      await waitForResult()
++      fireEvent.click(within(row('YouTube Music')).getByRole('button', { name: 'Copy' }))
++      await waitFor(() => expect(writeText).toHaveBeenCalledWith(ODESLI_LINKS['YouTube Music']))
++    })
++  })
+ })
+diff --git a/src/components/CopyButton.test.tsx b/src/components/CopyButton.test.tsx
+new file mode 100644
+index 0000000..f9b78f0
+--- /dev/null
++++ b/src/components/CopyButton.test.tsx
+@@ -0,0 +1,102 @@
++import { useRef } from 'react'
++import { render, screen } from '@testing-library/react'
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++import CopyButton from './CopyButton'
++import {
++  FALLBACK_LABEL,
++  RESET_MS,
++  advance,
++  clickAndSettle,
++  stubClipboard,
++  stubExecCommand,
++} from '../test/clipboard'
++
++// AC13: the button copies its text, reads "Copied" or "Copy it below", then
++// goes back to its label after 1.4 s.
++
++const TEXT = 'https://open.spotify.com/track/abc'
++
++function Harness({ label = 'Copy', className }: { label?: string; className?: string }) {
++  const fallbackRef = useRef<HTMLTextAreaElement>(null!)
++  return (
++    <>
++      <CopyButton text={TEXT} label={label} className={className} fallbackRef={fallbackRef} />
++      <textarea ref={fallbackRef} readOnly hidden aria-label={FALLBACK_LABEL} />
++    </>
++  )
++}
++
++const button = () => screen.getByRole('button')
++
++beforeEach(() => {
++  vi.useFakeTimers()
++})
++
++describe('CopyButton', () => {
++  it('shows its label', () => {
++    stubClipboard('ok')
++    render(<Harness label="Copy share text" />)
++    expect(button().textContent).toBe('Copy share text')
++  })
++
++  it('takes the given class name', () => {
++    stubClipboard('ok')
++    render(<Harness className="share" />)
++    expect(button()).toHaveClass('share')
++  })
++
++  it('copies its text with navigator.clipboard when clicked', async () => {
++    const writeText = stubClipboard('ok')
++    render(<Harness />)
++    await clickAndSettle(button())
++    expect(writeText).toHaveBeenCalledWith(TEXT)
++  })
++
++  it('reads "Copied" after the clipboard copy', async () => {
++    stubClipboard('ok')
++    render(<Harness />)
++    await clickAndSettle(button())
++    expect(button().textContent).toBe('Copied')
++  })
++
++  it('still reads "Copied" just before 1.4 s', async () => {
++    stubClipboard('ok')
++    render(<Harness />)
++    await clickAndSettle(button())
++    await advance(RESET_MS - 1)
++    expect(button().textContent).toBe('Copied')
++  })
++
++  it('goes back to its label after 1.4 s', async () => {
++    stubClipboard('ok')
++    render(<Harness label="Copy share text" />)
++    await clickAndSettle(button())
++    await advance(RESET_MS)
++    expect(button().textContent).toBe('Copy share text')
++  })
++
++  it('reads "Copied" when the clipboard is blocked and execCommand copies', async () => {
++    stubClipboard('blocked')
++    stubExecCommand('ok')
++    render(<Harness />)
++    await clickAndSettle(button())
++    expect(button().textContent).toBe('Copied')
++  })
++
++  it('reads "Copy it below" when the clipboard is blocked and execCommand fails', async () => {
++    stubClipboard('blocked')
++    stubExecCommand('refused')
++    render(<Harness />)
++    await clickAndSettle(button())
++    expect(button().textContent).toBe('Copy it below')
++  })
++
++  it('goes back to its label 1.4 s after "Copy it below"', async () => {
++    stubClipboard('blocked')
++    stubExecCommand('refused')
++    render(<Harness />)
++    await clickAndSettle(button())
++    await advance(RESET_MS)
++    expect(button().textContent).toBe('Copy')
++  })
++})
+diff --git a/src/components/CopyButton.tsx b/src/components/CopyButton.tsx
+new file mode 100644
+index 0000000..0e68799
+--- /dev/null
++++ b/src/components/CopyButton.tsx
+@@ -0,0 +1,31 @@
++import { type RefObject, useEffect, useRef, useState } from 'react'
++import { COPIED_LABEL, COPY_MANUAL_LABEL, COPY_RESET_MS, COPY_RESULT_COPIED } from '../constants'
++import { copyText } from '../lib/clipboard'
++
++type Props = {
++  text: string
++  label: string
++  className?: string
++  fallbackRef: RefObject<HTMLTextAreaElement | null>
++}
++
++export default function CopyButton({ text, label, className, fallbackRef }: Props) {
++  const [outcomeLabel, setOutcomeLabel] = useState<string | null>(null)
++  const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
++
++  useEffect(() => () => clearTimeout(resetTimer.current), [])
++
++  const copy = async () => {
++    // The fallback textarea renders alongside the button, so the ref is set by any click.
++    const result = await copyText(text, fallbackRef.current!)
++    setOutcomeLabel(result === COPY_RESULT_COPIED ? COPIED_LABEL : COPY_MANUAL_LABEL)
++    clearTimeout(resetTimer.current)
++    resetTimer.current = setTimeout(() => setOutcomeLabel(null), COPY_RESET_MS)
++  }
++
++  return (
++    <button className={className} type="button" onClick={copy}>
++      {outcomeLabel ?? label}
++    </button>
++  )
++}
+diff --git a/src/components/ResultCard.test.tsx b/src/components/ResultCard.test.tsx
+index cb78d6f..b08ef68 100644
+--- a/src/components/ResultCard.test.tsx
++++ b/src/components/ResultCard.test.tsx
+@@ -1,11 +1,22 @@
+ import { fireEvent, render, screen, within } from '@testing-library/react'
+-import { describe, expect, it, vi } from 'vitest'
++import { beforeEach, describe, expect, it, vi } from 'vitest'
+ import ResultCard from './ResultCard'
+ import { withSearchFallbacks } from '../lib/links'
+ import type { AppleAlt } from '../lib/types'
+-import { expectNotShown, resultRow as row } from '../test/dom'
++import {
++  FALLBACK_LABEL,
++  RESET_MS,
++  advance,
++  clickAndSettle,
++  expectedShareText,
++  selectedText,
++  stubClipboard,
++  stubExecCommand,
++} from '../test/clipboard'
++import { expectNotShown, isShown, resultRow as row } from '../test/dom'
+ 
+-// AC11 (result card) and AC12 (alternates), from a Conversion prop.
++// AC11 (result card), AC12 (alternates) and AC13 (copy and share), from a
++// Conversion prop.
+ 
+ const ALTS: AppleAlt[] = [
+   { title: 'Song', artist: 'First Artist', url: 'https://music.apple.com/us/album/song/1?i=11' },
+@@ -92,4 +103,160 @@ describe('ResultCard', () => {
+     renderCard({ ...CONVERSION, alts: undefined })
+     expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
+   })
++
++  describe('copy and share', () => {
++    const SHARE_TEXT = expectedShareText('Song — First Artist', CONVERSION.links)
++
++    const rowCopyButton = (name: string) => within(row(name)).getByRole('button')
++    const shareButton = () => screen.getByRole('button', { name: 'Copy share text' })
++    const fallback = () => screen.getByLabelText(FALLBACK_LABEL) as HTMLTextAreaElement
++
++    beforeEach(() => {
++      vi.useFakeTimers()
++    })
++
++    it('gives each platform row a Copy button', () => {
++      renderCard()
++      for (const name of ['Apple Music', 'Spotify', 'YouTube Music']) {
++        expect(rowCopyButton(name).textContent).toBe('Copy')
++      }
++    })
++
++    it.each([
++      ['Apple Music', CONVERSION.links.apple],
++      ['Spotify', CONVERSION.links.spotify],
++      ['YouTube Music', CONVERSION.links.ytm],
++    ])('copies the %s link from its row', async (name, href) => {
++      const writeText = stubClipboard('ok')
++      renderCard()
++      await clickAndSettle(rowCopyButton(name))
++      expect(writeText).toHaveBeenCalledTimes(1)
++      expect(writeText).toHaveBeenCalledWith(href)
++    })
++
++    it('reads "Copied" on the clicked row only', async () => {
++      stubClipboard('ok')
++      renderCard()
++      const spotifyButton = rowCopyButton('Spotify')
++      await clickAndSettle(spotifyButton)
++      expect(spotifyButton.textContent).toBe('Copied')
++      expect(rowCopyButton('Apple Music').textContent).toBe('Copy')
++      expect(rowCopyButton('YouTube Music').textContent).toBe('Copy')
++    })
++
++    it('sets the row button back to "Copy" after 1.4 s', async () => {
++      stubClipboard('ok')
++      renderCard()
++      const spotifyButton = rowCopyButton('Spotify')
++      await clickAndSettle(spotifyButton)
++      await advance(RESET_MS - 1)
++      expect(spotifyButton.textContent).toBe('Copied')
++      await advance(1)
++      expect(spotifyButton.textContent).toBe('Copy')
++    })
++
++    it('shows a "Copy share text" button with the share class', () => {
++      renderCard()
++      expect(shareButton()).toHaveClass('share')
++    })
++
++    it('copies "<title> — <artist>" and one line per platform as share text', async () => {
++      const writeText = stubClipboard('ok')
++      renderCard()
++      await clickAndSettle(shareButton())
++      expect(writeText).toHaveBeenCalledWith(SHARE_TEXT)
++    })
++
++    it('starts the share text with the title alone when the artist is empty', async () => {
++      const writeText = stubClipboard('ok')
++      renderCard({ ...CONVERSION, artist: '' })
++      await clickAndSettle(shareButton())
++      expect(writeText).toHaveBeenCalledWith(expectedShareText('Song', CONVERSION.links))
++    })
++
++    it('reads "Copied" on the share button, then "Copy share text" after 1.4 s', async () => {
++      stubClipboard('ok')
++      renderCard()
++      const button = shareButton()
++      await clickAndSettle(button)
++      expect(button.textContent).toBe('Copied')
++      await advance(RESET_MS)
++      expect(button.textContent).toBe('Copy share text')
++    })
++
++    it('has a read-only fallback textarea labelled "Text to copy", hidden until needed', () => {
++      renderCard()
++      expect(fallback()).toHaveAttribute('readonly')
++      expectNotShown(fallback())
++    })
++
++    it('keeps the fallback textarea hidden when the clipboard copy works', async () => {
++      stubClipboard('ok')
++      renderCard()
++      await clickAndSettle(shareButton())
++      expectNotShown(fallback())
++    })
++
++    it('copies the share text with execCommand from the textarea when the clipboard is blocked', async () => {
++      stubClipboard('blocked')
++      const execCommand = stubExecCommand('ok')
++      renderCard()
++      await clickAndSettle(shareButton())
++      expect(execCommand).toHaveBeenCalledWith('copy')
++      expect(execCommand.selected).toEqual([SHARE_TEXT])
++    })
++
++    it('reads "Copied" and hides the textarea when execCommand copies', async () => {
++      stubClipboard('blocked')
++      stubExecCommand('ok')
++      renderCard()
++      const button = shareButton()
++      await clickAndSettle(button)
++      expect(button.textContent).toBe('Copied')
++      expectNotShown(fallback())
++    })
++
++    it('shows the textarea with the text selected and focused when execCommand fails', async () => {
++      stubClipboard('blocked')
++      stubExecCommand('refused')
++      renderCard()
++      await clickAndSettle(shareButton())
++      const box = fallback()
++      expect(isShown(box)).toBe(true)
++      expect(box).toHaveValue(SHARE_TEXT)
++      expect(selectedText(box)).toBe(SHARE_TEXT)
++      expect(box).toHaveFocus()
++    })
++
++    it('reads "Copy it below" when execCommand fails', async () => {
++      stubClipboard('blocked')
++      stubExecCommand('refused')
++      renderCard()
++      const button = shareButton()
++      await clickAndSettle(button)
++      expect(button.textContent).toBe('Copy it below')
++    })
++
++    it('shows the row link in the textarea when a row copy falls back to manual', async () => {
++      stubClipboard('blocked')
++      stubExecCommand('throws')
++      renderCard()
++      const spotifyButton = rowCopyButton('Spotify')
++      await clickAndSettle(spotifyButton)
++      expect(spotifyButton.textContent).toBe('Copy it below')
++      expect(isShown(fallback())).toBe(true)
++      expect(selectedText(fallback())).toBe(CONVERSION.links.spotify)
++    })
++
++    it('hides the textarea again when a later copy works', async () => {
++      const writeText = stubClipboard('blocked')
++      stubExecCommand('refused')
++      renderCard()
++      await clickAndSettle(shareButton())
++      expect(isShown(fallback())).toBe(true)
++      writeText.mockResolvedValue(undefined)
++      await clickAndSettle(rowCopyButton('Spotify'))
++      expectNotShown(fallback())
++    })
++  })
+ })
+diff --git a/src/components/ResultCard.tsx b/src/components/ResultCard.tsx
+index 8f71065..eca97e3 100644
+--- a/src/components/ResultCard.tsx
++++ b/src/components/ResultCard.tsx
+@@ -1,5 +1,18 @@
+-import { ALT_SEPARATOR, PLATFORMS, TAG_EXACT, TAG_SEARCH, WRONG_MATCH_LABEL } from '../constants'
++import { useRef } from 'react'
++import {
++  ALT_SEPARATOR,
++  COPY_LABEL,
++  FALLBACK_TEXTAREA_LABEL,
++  FALLBACK_TEXTAREA_ROWS,
++  PLATFORMS,
++  SHARE_LABEL,
++  TAG_EXACT,
++  TAG_SEARCH,
++  WRONG_MATCH_LABEL,
++} from '../constants'
++import { shareText } from '../lib/share'
+ import type { AppleAlt, Conversion } from '../lib/types'
++import CopyButton from './CopyButton'
+ 
+ type Props = { conversion: Conversion; onChooseAlt(alt: AppleAlt): void }
+ 
+@@ -7,6 +20,7 @@ export default function ResultCard({ conversion, onChooseAlt }: Props) {
+   const { title, artist, art, links, exact } = conversion
+   // The first alternate is the current Apple link.
+   const otherAlts = (conversion.alts || []).slice(1)
++  const fallbackRef = useRef<HTMLTextAreaElement>(null)
+ 
+   return (
+     <section className="card">
+@@ -26,6 +40,12 @@ export default function ResultCard({ conversion, onChooseAlt }: Props) {
+             <span className={exact[key] ? 'tag exact' : 'tag'}>
+               {exact[key] ? TAG_EXACT : TAG_SEARCH}
+             </span>
++            <CopyButton
++              text={links[key]}
++              label={COPY_LABEL}
++              className="ghost"
++              fallbackRef={fallbackRef}
++            />
+           </li>
+         ))}
+       </ul>
+@@ -39,6 +59,19 @@ export default function ResultCard({ conversion, onChooseAlt }: Props) {
+           ))}
+         </div>
+       )}
++      <CopyButton
++        text={shareText(conversion)}
++        label={SHARE_LABEL}
++        className="share"
++        fallbackRef={fallbackRef}
++      />
++      <textarea
++        ref={fallbackRef}
++        rows={FALLBACK_TEXTAREA_ROWS}
++        readOnly
++        hidden
++        aria-label={FALLBACK_TEXTAREA_LABEL}
++      />
+     </section>
+   )
+ }
+diff --git a/src/constants.ts b/src/constants.ts
+index f8cb082..7638865 100644
+--- a/src/constants.ts
++++ b/src/constants.ts
+@@ -97,3 +97,14 @@ export const TAG_EXACT = 'EXACT'
+ export const TAG_SEARCH = 'SEARCH'
+ export const WRONG_MATCH_LABEL = 'Wrong Apple match?'
+ export const ALT_SEPARATOR = ' · '
++
++export const COPY_COMMAND = 'copy'
++export const COPY_RESULT_COPIED = 'copied'
++export const COPY_RESULT_MANUAL = 'manual'
++export const COPY_RESET_MS = 1400
++export const COPY_LABEL = 'Copy'
++export const COPIED_LABEL = 'Copied'
++export const COPY_MANUAL_LABEL = 'Copy it below'
++export const SHARE_LABEL = 'Copy share text'
++export const FALLBACK_TEXTAREA_LABEL = 'Text to copy'
++export const FALLBACK_TEXTAREA_ROWS = 5
+diff --git a/src/lib/clipboard.test.ts b/src/lib/clipboard.test.ts
+new file mode 100644
+index 0000000..0d96543
+--- /dev/null
++++ b/src/lib/clipboard.test.ts
+@@ -0,0 +1,94 @@
++import { afterEach, describe, expect, it } from 'vitest'
++import { copyText } from './clipboard'
++import { selectedText, stubClipboard, stubExecCommand } from '../test/clipboard'
++
++// AC13: copy with navigator.clipboard, fall back to execCommand('copy') from
++// the textarea, and leave the text selected for a manual copy when both fail.
++
++const TEXT = 'Song — Artist\n\nApple Music: https://music.apple.com/us/album/x/1?i=2'
++
++const boxes: HTMLTextAreaElement[] = []
++
++function fallbackBox(): HTMLTextAreaElement {
++  const box = document.createElement('textarea')
++  box.readOnly = true
++  box.hidden = true
++  document.body.append(box)
++  boxes.push(box)
++  return box
++}
++
++afterEach(() => {
++  boxes.splice(0).forEach((box) => box.remove())
++})
++
++describe('copyText', () => {
++  it('writes the text to navigator.clipboard and returns "copied"', async () => {
++    const writeText = stubClipboard('ok')
++    stubExecCommand('ok')
++    await expect(copyText(TEXT, fallbackBox())).resolves.toBe('copied')
++    expect(writeText).toHaveBeenCalledTimes(1)
++    expect(writeText).toHaveBeenCalledWith(TEXT)
++  })
++
++  it('does not fall back to execCommand when the clipboard write succeeds', async () => {
++    stubClipboard('ok')
++    const execCommand = stubExecCommand('ok')
++    await copyText(TEXT, fallbackBox())
++    expect(execCommand).not.toHaveBeenCalled()
++  })
++
++  it('runs execCommand("copy") on the text in the box when the clipboard is blocked', async () => {
++    stubClipboard('blocked')
++    const execCommand = stubExecCommand('ok')
++    await copyText(TEXT, fallbackBox())
++    expect(execCommand).toHaveBeenCalledTimes(1)
++    expect(execCommand).toHaveBeenCalledWith('copy')
++    expect(execCommand.selected).toEqual([TEXT])
++  })
++
++  it('returns "copied" when the clipboard is blocked and execCommand copies', async () => {
++    stubClipboard('blocked')
++    stubExecCommand('ok')
++    await expect(copyText(TEXT, fallbackBox())).resolves.toBe('copied')
++  })
++
++  it('falls back to execCommand when navigator.clipboard is missing', async () => {
++    stubClipboard('missing')
++    const execCommand = stubExecCommand('ok')
++    await expect(copyText(TEXT, fallbackBox())).resolves.toBe('copied')
++    expect(execCommand).toHaveBeenCalledWith('copy')
++    expect(execCommand.selected).toEqual([TEXT])
++  })
++
++  it('returns "manual" when the clipboard is blocked and execCommand refuses', async () => {
++    stubClipboard('blocked')
++    stubExecCommand('refused')
++    await expect(copyText(TEXT, fallbackBox())).resolves.toBe('manual')
++  })
++
++  it('returns "manual" when the clipboard is blocked and execCommand throws', async () => {
++    stubClipboard('blocked')
++    stubExecCommand('throws')
++    await expect(copyText(TEXT, fallbackBox())).resolves.toBe('manual')
++  })
++
++  it('leaves the whole text selected in the box for a manual copy', async () => {
++    stubClipboard('blocked')
++    stubExecCommand('refused')
++    const box = fallbackBox()
++    await copyText(TEXT, box)
++    expect(box).toHaveValue(TEXT)
++    expect(selectedText(box)).toBe(TEXT)
++  })
++
++  it('replaces text left in the box by an earlier manual copy', async () => {
++    stubClipboard('blocked')
++    stubExecCommand('refused')
++    const box = fallbackBox()
++    await copyText('earlier text', box)
++    await copyText(TEXT, box)
++    expect(box).toHaveValue(TEXT)
++    expect(selectedText(box)).toBe(TEXT)
++  })
++})
+diff --git a/src/lib/clipboard.ts b/src/lib/clipboard.ts
+new file mode 100644
+index 0000000..d352626
+--- /dev/null
++++ b/src/lib/clipboard.ts
+@@ -0,0 +1,33 @@
++import { COPY_COMMAND, COPY_RESULT_COPIED, COPY_RESULT_MANUAL } from '../constants'
++
++export type CopyResult = typeof COPY_RESULT_COPIED | typeof COPY_RESULT_MANUAL
++
++// A throw means the browser can't copy this way, the same as returning false.
++function execCopy(): boolean {
++  try {
++    return document.execCommand(COPY_COMMAND)
++  } catch {
++    return false
++  }
++}
++
++// The box stays shown, focused and selected on 'manual' so the user can copy by hand.
++export async function copyText(text: string, fallbackBox: HTMLTextAreaElement): Promise<CopyResult> {
++  fallbackBox.hidden = true
++  try {
++    // Rejects when permission is denied; throws a TypeError when
++    // navigator.clipboard is undefined outside a secure context.
++    await navigator.clipboard.writeText(text)
++    return COPY_RESULT_COPIED
++  } catch {
++    fallbackBox.value = text
++    fallbackBox.hidden = false
++    fallbackBox.select()
++    if (execCopy()) {
++      fallbackBox.hidden = true
++      return COPY_RESULT_COPIED
++    }
++    fallbackBox.focus()
++    return COPY_RESULT_MANUAL
++  }
++}
+diff --git a/src/literals.test.ts b/src/literals.test.ts
+index dabdd25..3189709 100644
+--- a/src/literals.test.ts
++++ b/src/literals.test.ts
+@@ -23,6 +23,11 @@ const UI_TEXT = {
+   TAG_SEARCH: 'SEARCH',
+   WRONG_MATCH_LABEL: 'Wrong Apple match?',
+   ALT_SEPARATOR: ' · ',
++  COPY_LABEL: 'Copy',
++  COPIED_LABEL: 'Copied',
++  COPY_MANUAL_LABEL: 'Copy it below',
++  SHARE_LABEL: 'Copy share text',
++  FALLBACK_TEXTAREA_LABEL: 'Text to copy',
+ }
+ 
+ describe('UI text constants', () => {
+@@ -31,18 +36,38 @@ describe('UI text constants', () => {
+   })
+ })
+ 
++it('exports the 1.4 s copy label reset as COPY_RESET_MS', () => {
++  expect(constants.COPY_RESET_MS).toBe(1400)
++})
++
+ describe.each(COMPONENT_FILES)('%s', (file) => {
+   it('has no literal JSX text', () => {
+     expect(source(file)).not.toMatch(JSX_TEXT)
+   })
+ 
++  it('does not inline the copy reset delay', () => {
++    expect(source(file)).not.toMatch(/\b1400\b/)
++  })
++
+   it.each(Object.values(UI_TEXT).filter((v) => v.trim()))('does not inline "%s"', (text) => {
+     expect(source(file)).not.toMatch(new RegExp(`['"\`]${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`))
+   })
+ })
+ 
+-it('covers the convert form and result card', () => {
++it('covers the convert form, result card and copy button', () => {
+   expect(COMPONENT_FILES).toEqual(
+-    expect.arrayContaining(['src/components/ConvertForm.tsx', 'src/components/ResultCard.tsx']),
++    expect.arrayContaining([
++      'src/components/ConvertForm.tsx',
++      'src/components/ResultCard.tsx',
++      'src/components/CopyButton.tsx',
++    ]),
+   )
+ })
++
++it('keeps the copy reset delay and labels out of src/lib/clipboard.ts', () => {
++  const clipboard = source('src/lib/clipboard.ts')
++  expect(clipboard).not.toMatch(/\b1400\b/)
++  for (const text of ['Copied', 'Copy it below']) {
++    expect(clipboard).not.toContain(text)
++  }
++})
+diff --git a/src/test/clipboard.ts b/src/test/clipboard.ts
+new file mode 100644
+index 0000000..331315d
+--- /dev/null
++++ b/src/test/clipboard.ts
+@@ -0,0 +1,88 @@
++import { act, fireEvent } from '@testing-library/react'
++import { vi } from 'vitest'
++
++// Stand-ins for the two copy APIs jsdom lacks: navigator.clipboard and
++// document.execCommand. setup.ts removes both after each test.
++
++// 'ok' resolves, 'blocked' rejects as a denied permission does, 'missing'
++// leaves navigator.clipboard undefined as an insecure context does.
++// How long a copy button shows "Copied" or "Copy it below" (AC13: 1.4 s).
++// A literal on purpose, so the tests check the value rather than echo it.
++export const RESET_MS = 1400
++
++// The fallback textarea's accessible name.
++export const FALLBACK_LABEL = 'Text to copy'
++
++// The text the user would copy from a textarea right now.
++export const selectedText = (box: HTMLTextAreaElement): string =>
++  box.value.slice(box.selectionStart, box.selectionEnd)
++
++// The AC7 share text, written out so tests state the format themselves.
++export const expectedShareText = (
++  head: string,
++  links: { apple: string; spotify: string; ytm: string },
++): string =>
++  [
++    head,
++    '',
++    `Apple Music: ${links.apple}`,
++    `Spotify: ${links.spotify}`,
++    `YouTube Music: ${links.ytm}`,
++  ].join('\n')
++
++export type ClipboardOutcome = 'ok' | 'blocked' | 'missing'
++
++export function stubClipboard(outcome: ClipboardOutcome) {
++  const writeText = vi.fn<(text: string) => Promise<void>>(async () => {
++    if (outcome === 'blocked') throw new DOMException('Write permission denied.', 'NotAllowedError')
++  })
++  Object.defineProperty(navigator, 'clipboard', {
++    configurable: true,
++    value: outcome === 'missing' ? undefined : { writeText },
++  })
++  return writeText
++}
++
++// execCommand('copy') returns true when it copied, false when the browser
++// refused, or throws. The stand-in records the focused textarea's selected
++// text at call time (the focused textarea, else the one with a selection),
++// which is what the real command would copy.
++export type ExecCommandOutcome = 'ok' | 'refused' | 'throws'
++
++export function stubExecCommand(outcome: ExecCommandOutcome) {
++  const selected: string[] = []
++  const execCommand = vi.fn<(command: string) => boolean>(() => {
++    const active = document.activeElement
++    const box =
++      active instanceof HTMLTextAreaElement
++        ? active
++        : Array.from(document.querySelectorAll('textarea')).find(
++            (el) => el.selectionEnd > el.selectionStart,
++          )
++    selected.push(box ? selectedText(box) : '')
++    if (outcome === 'throws') throw new Error('execCommand unsupported')
++    return outcome === 'ok'
++  })
++  Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand })
++  return Object.assign(execCommand, { selected })
++}
++
++export function resetClipboardStubs(): void {
++  Reflect.deleteProperty(navigator, 'clipboard')
++  Reflect.deleteProperty(document, 'execCommand')
++}
++
++// Clicks under fake timers and lets the copy promise chain finish without
++// firing the label reset timer.
++export async function clickAndSettle(el: Element): Promise<void> {
++  await act(async () => {
++    fireEvent.click(el)
++    await vi.advanceTimersByTimeAsync(0)
++  })
++}
++
++export async function advance(ms: number): Promise<void> {
++  await act(async () => {
++    await vi.advanceTimersByTimeAsync(ms)
++  })
++}
+diff --git a/src/test/setup.ts b/src/test/setup.ts
+index 36087f1..0a57cf3 100644
+--- a/src/test/setup.ts
++++ b/src/test/setup.ts
+@@ -1,12 +1,14 @@
+ import '@testing-library/jest-dom/vitest'
+ import { cleanup } from '@testing-library/react'
+ import { afterEach, vi } from 'vitest'
++import { resetClipboardStubs } from './clipboard'
+ import { stopJsonp } from './network'
+ import { resetSystemTheme } from './systemTheme'
+ 
+ // Each test starts from a clean page: no rendered tree, no stored values,
+ // no theme attribute on <html>, the system theme reset to light, real timers,
+-// no JSONP stand-in and the page URL back at /.
++// no JSONP stand-in, no clipboard or execCommand stand-in and the page URL
++// back at /.
+ resetSystemTheme()
+ 
+ afterEach(() => {
+@@ -21,6 +23,7 @@ afterEach(() => {
+   document.documentElement.removeAttribute('data-theme')
+   resetSystemTheme()
+   stopJsonp()
++  resetClipboardStubs()
+   vi.useRealTimers()
+   window.history.replaceState(null, '', '/')
+ })

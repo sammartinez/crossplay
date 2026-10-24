@@ -1,0 +1,1386 @@
+diff --git a/src/constants.ts b/src/constants.ts
+index ff821f8..9a3def4 100644
+--- a/src/constants.ts
++++ b/src/constants.ts
+@@ -8,3 +8,64 @@ export const THEME_STORAGE_KEY = 'cp-theme'
+ export const THEME_ATTRIBUTE = 'data-theme'
+ export const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
+ export const THEME_TOGGLE_LABEL = 'Theme'
++
++export const PLATFORM_APPLE = 'apple'
++export const PLATFORM_SPOTIFY = 'spotify'
++export const PLATFORM_YTM = 'ytm'
++// Display order for result links and share text.
++export const PLATFORMS = [
++  { key: PLATFORM_APPLE, name: 'Apple Music' },
++  { key: PLATFORM_SPOTIFY, name: 'Spotify' },
++  { key: PLATFORM_YTM, name: 'YouTube Music' },
++] as const
++
++export const KIND_TRACK = 'track'
++export const KIND_ALBUM = 'album'
++
++export const SPOTIFY_HOST_RE = /(^|\.)spotify\.(com|link)$/
++export const SPOTIFY_SHORT_HOST = 'spotify.link'
++export const SPOTIFY_ORIGIN = 'https://open.spotify.com'
++// oEmbed's player URL carries the real track/album ID behind a short link.
++export const SPOTIFY_EMBED_RE = /embed\/(track|album)\/([A-Za-z0-9]+)/
++export const SPOTIFY_OEMBED_URL = `${SPOTIFY_ORIGIN}/oembed`
++
++export const APPLE_MUSIC_HOST = 'music.apple.com'
++export const APPLE_SONG_PARAM = 'i'
++export const APPLE_SONG_SEGMENT = 'song'
++export const APPLE_ALBUM_SEGMENT = 'album'
++export const SLUG_SEPARATOR_RE = /-/g
++
++export const SEARCH_URL_BASES = {
++  [PLATFORM_SPOTIFY]: `${SPOTIFY_ORIGIN}/search/`,
++  [PLATFORM_APPLE]: `https://${APPLE_MUSIC_HOST}/us/search?term=`,
++  [PLATFORM_YTM]: 'https://music.youtube.com/search?q=',
++}
++
++export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
++export const ODESLI_COUNTRY = 'US'
++export const ODESLI_COUNTRY_PARAM = 'userCountry'
++// The link being looked up, for both Odesli and Spotify oEmbed.
++export const URL_PARAM = 'url'
++
++export const ITUNES_HOST = 'itunes.apple.com'
++export const ITUNES_LOOKUP_URL = `https://${ITUNES_HOST}/lookup`
++export const ITUNES_SEARCH_URL = `https://${ITUNES_HOST}/search`
++export const ITUNES_COUNTRY = 'us'
++export const ITUNES_ID_PARAM = 'id'
++export const ITUNES_ENTITY_PARAM = 'entity'
++export const ITUNES_COUNTRY_PARAM = 'country'
++export const ITUNES_TERM_PARAM = 'term'
++export const ITUNES_LIMIT_PARAM = 'limit'
++export const ITUNES_SEARCH_LIMIT = 5
++export const ITUNES_ENTITY_SONG = 'song'
++export const ITUNES_ENTITY_ALBUM = 'album'
++export const ITUNES_TRACKING_PARAM = '&uo='
++export const ARTWORK_SIZE_SMALL = '100x100'
++export const ARTWORK_SIZE_LARGE = '300x300'
++
++export const WORD_SEPARATOR = ' '
++export const WORD_START_RE = /\b\w/g
++export const LINE_BREAK = '\n'
++export const TITLE_ARTIST_SEPARATOR = ' — '
++export const SHARE_LABEL_SEPARATOR = ': '
++export const PATH_SEPARATOR = '/'
+diff --git a/src/lib/links.test.ts b/src/lib/links.test.ts
+new file mode 100644
+index 0000000..3c24444
+--- /dev/null
++++ b/src/lib/links.test.ts
+@@ -0,0 +1,244 @@
++import { describe, expect, it } from 'vitest'
++import { canonicalSpotifyLink, parseLink, searchUrl, withSearchFallbacks } from './links'
++import type { Lookup } from './types'
++
++const TRACK_ID = '4u7EnebtmKWzUH433cf5Qv'
++const ALBUM_ID = '1GbtB4zTqAsyfZEsm1RZfx'
++
++describe('parseLink', () => {
++  it('returns null for text that is not a URL', () => {
++    expect(parseLink('bohemian rhapsody')).toBeNull()
++  })
++
++  it('returns null for an empty string', () => {
++    expect(parseLink('')).toBeNull()
++  })
++
++  it('returns null for whitespace only', () => {
++    expect(parseLink('   ')).toBeNull()
++  })
++
++  it('trims surrounding whitespace before parsing', () => {
++    expect(parseLink(`  https://open.spotify.com/track/${TRACK_ID}\n`)).toEqual({
++      src: 'spotify',
++      kind: 'track',
++      id: TRACK_ID,
++      link: `https://open.spotify.com/track/${TRACK_ID}`,
++    })
++  })
++
++  it('turns a Spotify track link into a canonical link without the query string', () => {
++    expect(parseLink(`https://open.spotify.com/track/${TRACK_ID}?si=8a1f2b3c4d5e6f70`)).toEqual({
++      src: 'spotify',
++      kind: 'track',
++      id: TRACK_ID,
++      link: `https://open.spotify.com/track/${TRACK_ID}`,
++    })
++  })
++
++  it('turns a Spotify album link into a canonical album link', () => {
++    expect(parseLink(`https://open.spotify.com/album/${ALBUM_ID}?si=abc`)).toEqual({
++      src: 'spotify',
++      kind: 'album',
++      id: ALBUM_ID,
++      link: `https://open.spotify.com/album/${ALBUM_ID}`,
++    })
++  })
++
++  it('drops a locale segment from a Spotify link', () => {
++    expect(parseLink(`https://open.spotify.com/intl-de/track/${TRACK_ID}?si=x`)).toEqual({
++      src: 'spotify',
++      kind: 'track',
++      id: TRACK_ID,
++      link: `https://open.spotify.com/track/${TRACK_ID}`,
++    })
++  })
++
++  it('canonicalizes a link from another spotify.com subdomain to open.spotify.com', () => {
++    expect(parseLink(`https://play.spotify.com/track/${TRACK_ID}`)).toEqual({
++      src: 'spotify',
++      kind: 'track',
++      id: TRACK_ID,
++      link: `https://open.spotify.com/track/${TRACK_ID}`,
++    })
++  })
++
++  it('returns a spotify.link short link as-is with no kind or id', () => {
++    const parsed = parseLink('https://spotify.link/AbCdEf12345')
++    expect(parsed).toEqual({ src: 'spotify', link: 'https://spotify.link/AbCdEf12345' })
++    expect(parsed?.kind).toBeUndefined()
++    expect(parsed?.id).toBeUndefined()
++  })
++
++  it('returns null for a Spotify playlist link', () => {
++    expect(parseLink('https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M')).toBeNull()
++  })
++
++  it('returns null for a Spotify artist link', () => {
++    expect(parseLink('https://open.spotify.com/artist/1dfeR4HaWDbWqFHLkxsg1d')).toBeNull()
++  })
++
++  it('returns null for a host that only ends in "spotify.com"', () => {
++    expect(parseLink(`https://notspotify.com/track/${TRACK_ID}`)).toBeNull()
++  })
++
++  it('parses an Apple album link with ?i= as a track identified by the i param', () => {
++    expect(
++      parseLink('https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768'),
++    ).toEqual({
++      src: 'apple',
++      kind: 'track',
++      id: '1440806768',
++      slug: 'bohemian rhapsody',
++      link: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
++    })
++  })
++
++  it('keeps only the i param in an Apple track link', () => {
++    expect(
++      parseLink(
++        'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768&uo=4&ls=1',
++      )?.link,
++    ).toBe('https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768')
++  })
++
++  it('parses an Apple /song/ link as a track identified by the last path segment', () => {
++    expect(parseLink('https://music.apple.com/us/song/bohemian-rhapsody/1440806768')).toEqual({
++      src: 'apple',
++      kind: 'track',
++      id: '1440806768',
++      slug: 'bohemian rhapsody',
++      link: 'https://music.apple.com/us/song/bohemian-rhapsody/1440806768',
++    })
++  })
++
++  it('parses an Apple album link as an album and drops its query string', () => {
++    expect(
++      parseLink('https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041?ls=1'),
++    ).toEqual({
++      src: 'apple',
++      kind: 'album',
++      id: '1440806041',
++      slug: 'a night at the opera 2011 remaster',
++      link: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
++    })
++  })
++
++  it('returns null for an Apple artist link', () => {
++    expect(parseLink('https://music.apple.com/us/artist/queen/3296287')).toBeNull()
++  })
++
++  it('returns null for an Apple link on a host other than music.apple.com', () => {
++    expect(
++      parseLink('https://itunes.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768'),
++    ).toBeNull()
++  })
++
++  it('returns null for an unrelated host', () => {
++    expect(parseLink('https://music.youtube.com/watch?v=fJ9rUzIMcZQ')).toBeNull()
++  })
++})
++
++describe('canonicalSpotifyLink', () => {
++  it('builds an open.spotify.com track link', () => {
++    expect(canonicalSpotifyLink('track', TRACK_ID)).toBe(`https://open.spotify.com/track/${TRACK_ID}`)
++  })
++
++  it('builds an open.spotify.com album link', () => {
++    expect(canonicalSpotifyLink('album', ALBUM_ID)).toBe(`https://open.spotify.com/album/${ALBUM_ID}`)
++  })
++})
++
++describe('searchUrl', () => {
++  it('builds a Spotify search URL with the query URI-encoded', () => {
++    expect(searchUrl('spotify', 'Bohemian Rhapsody Queen')).toBe(
++      'https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen',
++    )
++  })
++
++  it('builds an Apple Music search URL with the query URI-encoded', () => {
++    expect(searchUrl('apple', 'Bohemian Rhapsody Queen')).toBe(
++      'https://music.apple.com/us/search?term=Bohemian%20Rhapsody%20Queen',
++    )
++  })
++
++  it('builds a YouTube Music search URL with the query URI-encoded', () => {
++    expect(searchUrl('ytm', 'Bohemian Rhapsody Queen')).toBe(
++      'https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen',
++    )
++  })
++
++  it('encodes reserved characters in the query', () => {
++    expect(searchUrl('ytm', 'Highway to Hell AC/DC & co?')).toBe(
++      'https://music.youtube.com/search?q=Highway%20to%20Hell%20AC%2FDC%20%26%20co%3F',
++    )
++  })
++})
++
++describe('withSearchFallbacks', () => {
++  const exactLinks = {
++    apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
++    spotify: `https://open.spotify.com/track/${TRACK_ID}`,
++    ytm: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
++  }
++
++  it('keeps every given link and marks all of them exact', () => {
++    const result = withSearchFallbacks({ title: 'Bohemian Rhapsody', artist: 'Queen', links: exactLinks })
++    expect(result.links).toEqual(exactLinks)
++    expect(result.exact).toEqual({ apple: true, spotify: true, ytm: true })
++  })
++
++  it('fills missing links with a search for "title artist" and marks them not exact', () => {
++    const result = withSearchFallbacks({
++      title: 'Bohemian Rhapsody',
++      artist: 'Queen',
++      links: { spotify: exactLinks.spotify },
++    })
++    expect(result.links).toEqual({
++      spotify: exactLinks.spotify,
++      apple: 'https://music.apple.com/us/search?term=Bohemian%20Rhapsody%20Queen',
++      ytm: 'https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen',
++    })
++    expect(result.exact).toEqual({ apple: false, spotify: true, ytm: false })
++  })
++
++  it('searches for the title alone when the artist is empty', () => {
++    const result = withSearchFallbacks({
++      title: 'Bohemian Rhapsody',
++      artist: '',
++      links: { apple: exactLinks.apple },
++    })
++    expect(result.links.spotify).toBe('https://open.spotify.com/search/Bohemian%20Rhapsody')
++    expect(result.links.ytm).toBe('https://music.youtube.com/search?q=Bohemian%20Rhapsody')
++  })
++
++  it('searches for the title alone when the artist is missing', () => {
++    const result = withSearchFallbacks({ title: 'Bohemian Rhapsody', links: {} })
++    expect(result.links.apple).toBe('https://music.apple.com/us/search?term=Bohemian%20Rhapsody')
++  })
++
++  it('keeps the title, artist, artwork and alternates', () => {
++    const alts = [{ title: 'Bohemian Rhapsody', artist: 'Queen', url: exactLinks.apple }]
++    const result = withSearchFallbacks({
++      title: 'Bohemian Rhapsody',
++      artist: 'Queen',
++      art: 'https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a',
++      links: { spotify: exactLinks.spotify },
++      alts,
++    })
++    expect(result.title).toBe('Bohemian Rhapsody')
++    expect(result.artist).toBe('Queen')
++    expect(result.art).toBe('https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a')
++    expect(result.alts).toEqual(alts)
++  })
++
++  it('does not mutate the lookup it is given', () => {
++    const lookup: Lookup = { title: 'Bohemian Rhapsody', artist: 'Queen', links: { spotify: exactLinks.spotify } }
++    const before = structuredClone(lookup)
++    const result = withSearchFallbacks(lookup)
++    expect(lookup).toEqual(before)
++    expect(lookup).not.toHaveProperty('exact')
++    expect(result).not.toBe(lookup)
++    expect(result.links).not.toBe(lookup.links)
++  })
++})
+diff --git a/src/lib/links.ts b/src/lib/links.ts
+new file mode 100644
+index 0000000..95a7c45
+--- /dev/null
++++ b/src/lib/links.ts
+@@ -0,0 +1,79 @@
++import {
++  APPLE_ALBUM_SEGMENT,
++  APPLE_MUSIC_HOST,
++  APPLE_SONG_PARAM,
++  APPLE_SONG_SEGMENT,
++  KIND_ALBUM,
++  KIND_TRACK,
++  PATH_SEPARATOR,
++  PLATFORM_APPLE,
++  PLATFORM_SPOTIFY,
++  PLATFORMS,
++  SEARCH_URL_BASES,
++  SLUG_SEPARATOR_RE,
++  SPOTIFY_HOST_RE,
++  SPOTIFY_ORIGIN,
++  SPOTIFY_SHORT_HOST,
++  WORD_SEPARATOR,
++} from '../constants'
++import type { Conversion, Kind, Lookup, ParsedLink, Platform } from './types'
++
++const isKind = (segment: string): segment is Kind =>
++  segment === KIND_TRACK || segment === KIND_ALBUM
++
++export const canonicalSpotifyLink = (kind: Kind, id: string): string =>
++  [SPOTIFY_ORIGIN, kind, id].join(PATH_SEPARATOR)
++
++function parseSpotify(u: URL, parts: string[]): ParsedLink | null {
++  const i = parts.findIndex(isKind)
++  if (i < 0) {
++    return u.hostname.endsWith(SPOTIFY_SHORT_HOST) ? { src: PLATFORM_SPOTIFY, link: u.href } : null
++  }
++  const kind = parts[i] as Kind
++  const id = parts[i + 1]
++  return { src: PLATFORM_SPOTIFY, kind, id, link: canonicalSpotifyLink(kind, id) }
++}
++
++function parseApple(u: URL, parts: string[]): ParsedLink | null {
++  const song = u.searchParams.get(APPLE_SONG_PARAM)
++  const kind: Kind | null =
++    song || parts.includes(APPLE_SONG_SEGMENT)
++      ? KIND_TRACK
++      : parts.includes(APPLE_ALBUM_SEGMENT)
++        ? KIND_ALBUM
++        : null
++  if (!kind) return null
++  const id = song || parts[parts.length - 1]
++  const slug = (parts[parts.length - 2] || '').replace(SLUG_SEPARATOR_RE, WORD_SEPARATOR)
++  const link = new URL(u.origin + u.pathname)
++  if (song) link.searchParams.set(APPLE_SONG_PARAM, song)
++  return { src: PLATFORM_APPLE, kind, id, slug, link: link.href }
++}
++
++export function parseLink(raw: string): ParsedLink | null {
++  let u: URL
++  try {
++    u = new URL(raw.trim())
++  } catch {
++    return null
++  }
++  const parts = u.pathname.split(PATH_SEPARATOR).filter(Boolean)
++  if (SPOTIFY_HOST_RE.test(u.hostname)) return parseSpotify(u, parts)
++  if (u.hostname === APPLE_MUSIC_HOST) return parseApple(u, parts)
++  return null
++}
++
++export const searchUrl = (platform: Platform, query: string): string =>
++  SEARCH_URL_BASES[platform] + encodeURIComponent(query)
++
++export function withSearchFallbacks(lookup: Lookup): Conversion {
++  const query = [lookup.title, lookup.artist].filter(Boolean).join(WORD_SEPARATOR)
++  const links = {} as Conversion['links']
++  const exact = {} as Conversion['exact']
++  for (const { key } of PLATFORMS) {
++    const given = lookup.links[key]
++    exact[key] = !!given
++    links[key] = given || searchUrl(key, query)
++  }
++  return { ...lookup, links, exact }
++}
+diff --git a/src/lib/lookup.test.ts b/src/lib/lookup.test.ts
+new file mode 100644
+index 0000000..96b8987
+--- /dev/null
++++ b/src/lib/lookup.test.ts
+@@ -0,0 +1,304 @@
++import { describe, expect, it } from 'vitest'
++import {
++  fromItunesLookup,
++  fromOdesli,
++  fromSpotifyFallback,
++  itunesLookupUrl,
++  itunesSearchUrl,
++  odesliUrl,
++  resolveSpotifyShortLink,
++  spotifyOembedUrl,
++} from './lookup'
++import type { ParsedLink } from './types'
++import { fixture } from '../test/fixtures'
++
++const SPOTIFY_TRACK: ParsedLink = {
++  src: 'spotify',
++  kind: 'track',
++  id: '4u7EnebtmKWzUH433cf5Qv',
++  link: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
++}
++const SPOTIFY_ALBUM: ParsedLink = {
++  src: 'spotify',
++  kind: 'album',
++  id: '1GbtB4zTqAsyfZEsm1RZfx',
++  link: 'https://open.spotify.com/album/1GbtB4zTqAsyfZEsm1RZfx',
++}
++const APPLE_TRACK: ParsedLink = {
++  src: 'apple',
++  kind: 'track',
++  id: '1440806768',
++  slug: 'bohemian rhapsody',
++  link: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
++}
++const APPLE_ALBUM: ParsedLink = {
++  src: 'apple',
++  kind: 'album',
++  id: '1440806041',
++  slug: 'a night at the opera 2011 remaster',
++  link: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
++}
++
++const ARTWORK_100 =
++  'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/100x100bb.jpg'
++const ARTWORK_300 =
++  'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/300x300bb.jpg'
++const OEMBED_THUMB =
++  'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02ce4f1737bc8a646c8c4bd25a'
++
++describe('odesliUrl', () => {
++  it('points at the Odesli links endpoint with userCountry=US', () => {
++    const url = new URL(odesliUrl(SPOTIFY_TRACK.link))
++    expect(url.origin + url.pathname).toBe('https://api.song.link/v1-alpha.1/links')
++    expect(url.searchParams.get('userCountry')).toBe('US')
++  })
++
++  it('passes the link as the url param, encoded so its own query survives', () => {
++    const url = new URL(odesliUrl(APPLE_TRACK.link))
++    expect(url.searchParams.get('url')).toBe(APPLE_TRACK.link)
++    expect(url.searchParams.has('i')).toBe(false)
++  })
++})
++
++describe('fromOdesli', () => {
++  it('maps the entity title, artist and thumbnail and the three platform links', () => {
++    expect(fromOdesli(fixture('odesli-track.json'))).toEqual({
++      title: 'Bohemian Rhapsody - Remastered 2011',
++      artist: 'Queen',
++      art: 'https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a',
++      links: {
++        apple:
++          'https://geo.music.apple.com/us/album/_/1440806041?i=1440806768&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m',
++        spotify: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
++        ytm: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
++      },
++    })
++  })
++
++  it('gives undefined title, artist and art when the entity is missing', () => {
++    const lookup = fromOdesli(fixture('odesli-partial.json'))
++    expect(lookup.title).toBeUndefined()
++    expect(lookup.artist).toBeUndefined()
++    expect(lookup.art).toBeUndefined()
++  })
++
++  it('gives undefined for platforms that have no link', () => {
++    const lookup = fromOdesli(fixture('odesli-partial.json'))
++    expect(lookup.links.spotify).toBe('https://open.spotify.com/track/0000000000000000000000')
++    expect(lookup.links.apple).toBeUndefined()
++    expect(lookup.links.ytm).toBeUndefined()
++  })
++
++  it('does not throw on an empty body', () => {
++    expect(() => fromOdesli(fixture('odesli-empty.json'))).not.toThrow()
++    const lookup = fromOdesli(fixture('odesli-empty.json'))
++    expect(lookup.title).toBeUndefined()
++    expect(lookup.links.apple).toBeUndefined()
++    expect(lookup.links.spotify).toBeUndefined()
++    expect(lookup.links.ytm).toBeUndefined()
++  })
++})
++
++describe('itunesLookupUrl', () => {
++  it('looks up a track by id with entity=song in the US store', () => {
++    const url = new URL(itunesLookupUrl(APPLE_TRACK))
++    expect(url.origin + url.pathname).toBe('https://itunes.apple.com/lookup')
++    expect(url.searchParams.get('id')).toBe('1440806768')
++    expect(url.searchParams.get('entity')).toBe('song')
++    expect(url.searchParams.get('country')).toBe('us')
++  })
++
++  it('looks up an album by id with entity=album', () => {
++    const url = new URL(itunesLookupUrl(APPLE_ALBUM))
++    expect(url.searchParams.get('id')).toBe('1440806041')
++    expect(url.searchParams.get('entity')).toBe('album')
++  })
++})
++
++describe('fromItunesLookup', () => {
++  it('maps the track name, artist and upsized artwork, and keeps the Apple link', () => {
++    expect(fromItunesLookup(fixture('itunes-lookup-song.json'), APPLE_TRACK)).toEqual({
++      title: 'Bohemian Rhapsody',
++      artist: 'Queen',
++      art: ARTWORK_300,
++      links: { apple: APPLE_TRACK.link },
++    })
++  })
++
++  it('upsizes the artwork from 100x100 to 300x300', () => {
++    const lookup = fromItunesLookup(fixture('itunes-lookup-song.json'), APPLE_TRACK)
++    expect(lookup.art).not.toBe(ARTWORK_100)
++    expect(lookup.art).toBe(ARTWORK_300)
++  })
++
++  it('falls back to the collection name when there is no track name', () => {
++    const lookup = fromItunesLookup(fixture('itunes-lookup-album.json'), APPLE_ALBUM)
++    expect(lookup.title).toBe('A Night At The Opera (2011 Remaster)')
++    expect(lookup.artist).toBe('Queen')
++    expect(lookup.links).toEqual({ apple: APPLE_ALBUM.link })
++  })
++
++  it('falls back to the title-cased slug, an empty artist and no art when there are no results', () => {
++    expect(fromItunesLookup(fixture('itunes-lookup-empty.json'), APPLE_TRACK)).toEqual({
++      title: 'Bohemian Rhapsody',
++      artist: '',
++      art: undefined,
++      links: { apple: APPLE_TRACK.link },
++    })
++  })
++
++  it('handles a null body the same as no results', () => {
++    expect(fromItunesLookup(null, APPLE_ALBUM)).toEqual({
++      title: 'A Night At The Opera 2011 Remaster',
++      artist: '',
++      art: undefined,
++      links: { apple: APPLE_ALBUM.link },
++    })
++  })
++})
++
++describe('spotifyOembedUrl', () => {
++  it('points at the Spotify oEmbed endpoint with the link as the url param', () => {
++    const url = new URL(spotifyOembedUrl('https://spotify.link/AbCdEf12345'))
++    expect(url.origin + url.pathname).toBe('https://open.spotify.com/oembed')
++    expect(url.searchParams.get('url')).toBe('https://spotify.link/AbCdEf12345')
++  })
++})
++
++describe('resolveSpotifyShortLink', () => {
++  it('reads the track from the oEmbed iframe_url and returns a canonical parsed link', () => {
++    expect(resolveSpotifyShortLink(fixture('spotify-oembed-track.json'))).toEqual(SPOTIFY_TRACK)
++  })
++
++  it('resolves an album embed to a canonical album link', () => {
++    expect(resolveSpotifyShortLink(fixture('spotify-oembed-album.json'))).toEqual(SPOTIFY_ALBUM)
++  })
++
++  it('falls back to the oEmbed html when iframe_url is missing', () => {
++    expect(resolveSpotifyShortLink(fixture('spotify-oembed-html-only.json'))).toEqual(SPOTIFY_TRACK)
++  })
++
++  it('returns null when the embed is not a track or album', () => {
++    expect(resolveSpotifyShortLink(fixture('spotify-oembed-playlist.json'))).toBeNull()
++  })
++
++  it('returns null when the oEmbed has neither iframe_url nor html', () => {
++    expect(resolveSpotifyShortLink(fixture('spotify-oembed-no-player.json'))).toBeNull()
++  })
++})
++
++describe('itunesSearchUrl', () => {
++  it('searches songs by title, limited to 5 results in the US store', () => {
++    const url = new URL(itunesSearchUrl('Bohemian Rhapsody - Remastered 2011', 'track'))
++    expect(url.origin + url.pathname).toBe('https://itunes.apple.com/search')
++    expect(url.searchParams.get('term')).toBe('Bohemian Rhapsody - Remastered 2011')
++    expect(url.searchParams.get('entity')).toBe('song')
++    expect(url.searchParams.get('limit')).toBe('5')
++    expect(url.searchParams.get('country')).toBe('us')
++  })
++
++  it('searches albums when the kind is album', () => {
++    const url = new URL(itunesSearchUrl('A Night At The Opera (2011 Remaster)', 'album'))
++    expect(url.searchParams.get('entity')).toBe('album')
++  })
++
++  it('searches songs when no kind is given', () => {
++    const url = new URL(itunesSearchUrl('Bohemian Rhapsody'))
++    expect(url.searchParams.get('entity')).toBe('song')
++  })
++
++  it('encodes the title so reserved characters stay in the term', () => {
++    const url = new URL(itunesSearchUrl('Rock & Roll? #1', 'track'))
++    expect(url.searchParams.get('term')).toBe('Rock & Roll? #1')
++    expect(url.searchParams.get('entity')).toBe('song')
++  })
++})
++
++describe('fromSpotifyFallback', () => {
++  it('takes the title and artwork from oEmbed and the Spotify link from the parsed link', () => {
++    const lookup = fromSpotifyFallback(
++      fixture('spotify-oembed-track.json'),
++      fixture('itunes-search-songs.json'),
++      SPOTIFY_TRACK,
++    )
++    expect(lookup.title).toBe('Bohemian Rhapsody - Remastered 2011')
++    expect(lookup.art).toBe(OEMBED_THUMB)
++    expect(lookup.links.spotify).toBe(SPOTIFY_TRACK.link)
++  })
++
++  it('maps every iTunes match to an alternate with a music.apple.com URL stripped of &uo=', () => {
++    const lookup = fromSpotifyFallback(
++      fixture('spotify-oembed-track.json'),
++      fixture('itunes-search-songs.json'),
++      SPOTIFY_TRACK,
++    )
++    expect(lookup.alts).toEqual([
++      {
++        title: 'Bohemian Rhapsody',
++        artist: 'Queen',
++        url: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
++      },
++      {
++        title: 'Bohemian Rhapsody (Live Aid)',
++        artist: 'Queen',
++        url: 'https://music.apple.com/us/album/bohemian-rhapsody-live-aid/1440650428?i=1440650711',
++      },
++      {
++        title: 'Bohemian Rhapsody',
++        artist: 'The Petersens',
++        url: 'https://music.apple.com/us/album/bohemian-rhapsody/1564530719?i=1564530724',
++      },
++    ])
++  })
++
++  it('uses the first alternate for the artist and the Apple link', () => {
++    const lookup = fromSpotifyFallback(
++      fixture('spotify-oembed-track.json'),
++      fixture('itunes-search-songs.json'),
++      SPOTIFY_TRACK,
++    )
++    expect(lookup.artist).toBe('Queen')
++    expect(lookup.links.apple).toBe(
++      'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
++    )
++  })
++
++  it('uses the collection name and collection URL for album matches', () => {
++    const lookup = fromSpotifyFallback(
++      fixture('spotify-oembed-album.json'),
++      fixture('itunes-search-albums.json'),
++      SPOTIFY_ALBUM,
++    )
++    expect(lookup.alts).toEqual([
++      {
++        title: 'A Night At The Opera (2011 Remaster)',
++        artist: 'Queen',
++        url: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
++      },
++    ])
++    expect(lookup.links).toEqual({
++      spotify: SPOTIFY_ALBUM.link,
++      apple: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
++    })
++  })
++
++  it('gives an empty artist, no Apple link and no alternates when the search finds nothing', () => {
++    const lookup = fromSpotifyFallback(
++      fixture('spotify-oembed-track.json'),
++      fixture('itunes-search-empty.json'),
++      SPOTIFY_TRACK,
++    )
++    expect(lookup.title).toBe('Bohemian Rhapsody - Remastered 2011')
++    expect(lookup.artist).toBe('')
++    expect(lookup.links.spotify).toBe(SPOTIFY_TRACK.link)
++    expect(lookup.links.apple).toBeUndefined()
++    expect(lookup.alts).toEqual([])
++  })
++
++  it('handles a null iTunes body the same as no results', () => {
++    const lookup = fromSpotifyFallback(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK)
++    expect(lookup.artist).toBe('')
++    expect(lookup.links.apple).toBeUndefined()
++    expect(lookup.alts).toEqual([])
++  })
++})
+diff --git a/src/lib/lookup.ts b/src/lib/lookup.ts
+new file mode 100644
+index 0000000..aa78601
+--- /dev/null
++++ b/src/lib/lookup.ts
+@@ -0,0 +1,120 @@
++import {
++  ARTWORK_SIZE_LARGE,
++  ARTWORK_SIZE_SMALL,
++  APPLE_MUSIC_HOST,
++  ITUNES_COUNTRY,
++  ITUNES_COUNTRY_PARAM,
++  ITUNES_ENTITY_PARAM,
++  ITUNES_ID_PARAM,
++  ITUNES_LIMIT_PARAM,
++  ITUNES_TERM_PARAM,
++  ITUNES_ENTITY_ALBUM,
++  ITUNES_ENTITY_SONG,
++  ITUNES_HOST,
++  ITUNES_LOOKUP_URL,
++  ITUNES_SEARCH_LIMIT,
++  ITUNES_SEARCH_URL,
++  ITUNES_TRACKING_PARAM,
++  KIND_ALBUM,
++  ODESLI_API_URL,
++  ODESLI_COUNTRY,
++  ODESLI_COUNTRY_PARAM,
++  PLATFORM_SPOTIFY,
++  SPOTIFY_EMBED_RE,
++  SPOTIFY_OEMBED_URL,
++  URL_PARAM,
++} from '../constants'
++import { canonicalSpotifyLink } from './links'
++import { titleCase } from './text'
++import type {
++  AppleAlt,
++  ItunesResponse,
++  Kind,
++  Lookup,
++  OdesliResponse,
++  ParsedLink,
++  SpotifyOembed,
++} from './types'
++
++const withParams = (base: string, params: Record<string, string>): string =>
++  `${base}?${new URLSearchParams(params)}`
++
++const itunesEntity = (kind?: Kind): string =>
++  kind === KIND_ALBUM ? ITUNES_ENTITY_ALBUM : ITUNES_ENTITY_SONG
++
++export const odesliUrl = (link: string): string =>
++  withParams(ODESLI_API_URL, { [ODESLI_COUNTRY_PARAM]: ODESLI_COUNTRY, [URL_PARAM]: link })
++
++export function fromOdesli(body: OdesliResponse): Lookup {
++  const entity = body.entityUniqueId ? body.entitiesByUniqueId?.[body.entityUniqueId] : undefined
++  const platformLinks = body.linksByPlatform
++  return {
++    title: entity?.title,
++    artist: entity?.artistName,
++    art: entity?.thumbnailUrl,
++    links: {
++      apple: platformLinks?.appleMusic?.url,
++      spotify: platformLinks?.spotify?.url,
++      ytm: platformLinks?.youtubeMusic?.url,
++    },
++  }
++}
++
++// Only called for Apple links, which parseLink always gives an id.
++export const itunesLookupUrl = (p: ParsedLink): string =>
++  withParams(ITUNES_LOOKUP_URL, {
++    [ITUNES_ID_PARAM]: String(p.id),
++    [ITUNES_ENTITY_PARAM]: itunesEntity(p.kind),
++    [ITUNES_COUNTRY_PARAM]: ITUNES_COUNTRY,
++  })
++
++export function fromItunesLookup(body: ItunesResponse | null, p: ParsedLink): Lookup {
++  const match = body?.results?.[0]
++  return {
++    title: match?.trackName || match?.collectionName || titleCase(p.slug),
++    artist: match?.artistName || '',
++    art: match?.artworkUrl100?.replace(ARTWORK_SIZE_SMALL, ARTWORK_SIZE_LARGE),
++    links: { apple: p.link },
++  }
++}
++
++export const spotifyOembedUrl = (link: string): string =>
++  withParams(SPOTIFY_OEMBED_URL, { [URL_PARAM]: link })
++
++export function resolveSpotifyShortLink(oembed: SpotifyOembed): ParsedLink | null {
++  const match = (oembed.iframe_url || oembed.html || '').match(SPOTIFY_EMBED_RE)
++  if (!match) return null
++  const kind = match[1] as Kind
++  const id = match[2]
++  return { src: PLATFORM_SPOTIFY, kind, id, link: canonicalSpotifyLink(kind, id) }
++}
++
++export const itunesSearchUrl = (title: string, kind?: Kind): string =>
++  withParams(ITUNES_SEARCH_URL, {
++    [ITUNES_TERM_PARAM]: title,
++    [ITUNES_ENTITY_PARAM]: itunesEntity(kind),
++    [ITUNES_LIMIT_PARAM]: String(ITUNES_SEARCH_LIMIT),
++    [ITUNES_COUNTRY_PARAM]: ITUNES_COUNTRY,
++  })
++
++export function fromSpotifyFallback(
++  oembed: SpotifyOembed,
++  itunesBody: ItunesResponse | null,
++  p: ParsedLink,
++): Lookup {
++  const alts: AppleAlt[] = (itunesBody?.results || []).map((r) => ({
++    title: r.trackName || r.collectionName || '',
++    artist: r.artistName,
++    url: (r.trackViewUrl || r.collectionViewUrl || '')
++      .replace(ITUNES_HOST, APPLE_MUSIC_HOST)
++      .split(ITUNES_TRACKING_PARAM)[0],
++  }))
++  const top = alts[0]
++  return {
++    title: oembed.title,
++    artist: top?.artist || '',
++    art: oembed.thumbnail_url,
++    links: { spotify: p.link, apple: top?.url },
++    alts,
++  }
++}
+diff --git a/src/lib/purity.test.ts b/src/lib/purity.test.ts
+new file mode 100644
+index 0000000..c08754c
+--- /dev/null
++++ b/src/lib/purity.test.ts
+@@ -0,0 +1,22 @@
++import { readFileSync } from 'node:fs'
++import { resolve } from 'node:path'
++import { describe, expect, it } from 'vitest'
++
++// AC15: the link, share, text and lookup modules are pure (no DOM, storage or
++// network access) and keep their URLs in src/constants.ts.
++// npm test runs vitest from the repo root.
++const PURE_MODULES = ['types.ts', 'links.ts', 'share.ts', 'text.ts', 'lookup.ts']
++const source = (file: string) => readFileSync(resolve(process.cwd(), 'src/lib', file), 'utf8')
++
++const IMPURE =
++  /\b(document|window|localStorage|sessionStorage|navigator|history|location)\s*\.|\bfetch\s*\(|\bXMLHttpRequest\b/
++
++describe.each(PURE_MODULES)('src/lib/%s', (file) => {
++  it('does not touch the DOM, storage or the network', () => {
++    expect(source(file)).not.toMatch(IMPURE)
++  })
++
++  it('has no inline URL literals', () => {
++    expect(source(file)).not.toMatch(/['"`]https?:\/\//)
++  })
++})
+diff --git a/src/lib/share.test.ts b/src/lib/share.test.ts
+new file mode 100644
+index 0000000..ecd322e
+--- /dev/null
++++ b/src/lib/share.test.ts
+@@ -0,0 +1,41 @@
++import { describe, expect, it } from 'vitest'
++import { shareText } from './share'
++
++const links = {
++  apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
++  spotify: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
++  ytm: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
++}
++
++describe('shareText', () => {
++  it('starts with "title — artist" and lists Apple Music, Spotify and YouTube Music links', () => {
++    expect(shareText({ title: 'Bohemian Rhapsody', artist: 'Queen', links })).toBe(
++      'Bohemian Rhapsody — Queen\n\n' +
++        'Apple Music: https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768\n' +
++        'Spotify: https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv\n' +
++        'YouTube Music: https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
++    )
++  })
++
++  it('uses the title alone as the first line when the artist is empty', () => {
++    expect(shareText({ title: 'Bohemian Rhapsody', artist: '', links }).split('\n')[0]).toBe(
++      'Bohemian Rhapsody',
++    )
++  })
++
++  it('uses the title alone as the first line when the artist is missing', () => {
++    expect(shareText({ title: 'Bohemian Rhapsody', links })).toBe(
++      'Bohemian Rhapsody\n\n' +
++        `Apple Music: ${links.apple}\nSpotify: ${links.spotify}\nYouTube Music: ${links.ytm}`,
++    )
++  })
++
++  it('includes search links the same way as exact links', () => {
++    const text = shareText({
++      title: 'Bohemian Rhapsody',
++      artist: 'Queen',
++      links: { ...links, ytm: 'https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen' },
++    })
++    expect(text.endsWith('YouTube Music: https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen')).toBe(true)
++  })
++})
+diff --git a/src/lib/share.ts b/src/lib/share.ts
+new file mode 100644
+index 0000000..be3b5ce
+--- /dev/null
++++ b/src/lib/share.ts
+@@ -0,0 +1,12 @@
++import { LINE_BREAK, PLATFORMS, SHARE_LABEL_SEPARATOR, TITLE_ARTIST_SEPARATOR } from '../constants'
++import type { Conversion } from './types'
++
++export function shareText({
++  title,
++  artist,
++  links,
++}: Pick<Conversion, 'title' | 'artist' | 'links'>): string {
++  const head = artist ? `${title}${TITLE_ARTIST_SEPARATOR}${artist}` : title
++  const lines = PLATFORMS.map(({ key, name }) => `${name}${SHARE_LABEL_SEPARATOR}${links[key]}`)
++  return [head, '', ...lines].join(LINE_BREAK)
++}
+diff --git a/src/lib/text.test.ts b/src/lib/text.test.ts
+new file mode 100644
+index 0000000..0ac7f8b
+--- /dev/null
++++ b/src/lib/text.test.ts
+@@ -0,0 +1,21 @@
++import { describe, expect, it } from 'vitest'
++import { titleCase } from './text'
++
++describe('titleCase', () => {
++  it('capitalizes the first letter of each word', () => {
++    expect(titleCase('a night at the opera')).toBe('A Night At The Opera')
++  })
++
++  it('leaves letters that are already capitalized alone', () => {
++    expect(titleCase('AC dc live')).toBe('AC Dc Live')
++  })
++
++  it('returns an empty string for an empty string', () => {
++    expect(titleCase('')).toBe('')
++  })
++
++  it('returns an empty string when given nothing', () => {
++    expect(titleCase()).toBe('')
++    expect(titleCase(undefined)).toBe('')
++  })
++})
+diff --git a/src/lib/text.ts b/src/lib/text.ts
+new file mode 100644
+index 0000000..ada603f
+--- /dev/null
++++ b/src/lib/text.ts
+@@ -0,0 +1,4 @@
++import { WORD_START_RE } from '../constants'
++
++export const titleCase = (s?: string): string =>
++  (s || '').replace(WORD_START_RE, (c) => c.toUpperCase())
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+new file mode 100644
+index 0000000..c12de82
+--- /dev/null
++++ b/src/lib/types.ts
+@@ -0,0 +1,67 @@
++import type {
++  KIND_ALBUM,
++  KIND_TRACK,
++  PLATFORM_APPLE,
++  PLATFORM_SPOTIFY,
++  PLATFORMS,
++} from '../constants'
++
++export type Platform = (typeof PLATFORMS)[number]['key']
++export type Kind = typeof KIND_TRACK | typeof KIND_ALBUM
++
++// A Spotify short link has no kind or id until it is resolved.
++export type ParsedLink = {
++  src: typeof PLATFORM_SPOTIFY | typeof PLATFORM_APPLE
++  kind?: Kind
++  id?: string
++  slug?: string
++  link: string
++}
++
++export type AppleAlt = { title: string; artist: string; url: string }
++
++export type Lookup = {
++  title?: string
++  artist?: string
++  art?: string
++  links: Partial<Record<Platform, string>>
++  alts?: AppleAlt[]
++}
++
++export type Conversion = Lookup & {
++  links: Record<Platform, string>
++  exact: Record<Platform, boolean>
++}
++
++// Response shapes below list only the fields the mappers read.
++
++type OdesliEntity = { title?: string; artistName?: string; thumbnailUrl?: string }
++type OdesliPlatformLink = { url: string }
++
++export type OdesliResponse = {
++  entityUniqueId?: string
++  entitiesByUniqueId?: Record<string, OdesliEntity>
++  linksByPlatform?: {
++    appleMusic?: OdesliPlatformLink
++    spotify?: OdesliPlatformLink
++    youtubeMusic?: OdesliPlatformLink
++  }
++}
++
++type ItunesResult = {
++  trackName?: string
++  collectionName?: string
++  artistName: string
++  artworkUrl100?: string
++  trackViewUrl?: string
++  collectionViewUrl?: string
++}
++
++export type ItunesResponse = { results?: ItunesResult[] }
++
++export type SpotifyOembed = {
++  title: string
++  thumbnail_url?: string
++  iframe_url?: string
++  html?: string
++}
+diff --git a/src/test/fixtures.ts b/src/test/fixtures.ts
+new file mode 100644
+index 0000000..e5bb083
+--- /dev/null
++++ b/src/test/fixtures.ts
+@@ -0,0 +1,9 @@
++import { readFileSync } from 'node:fs'
++import { resolve } from 'node:path'
++
++// Loads a JSON fixture from src/test/fixtures/. The return type is inferred
++// from where the fixture is passed, so tests don't name the response types.
++// npm test runs vitest from the repo root.
++export function fixture<T>(name: string): T {
++  return JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/fixtures', name), 'utf8')) as T
++}
+diff --git a/src/test/fixtures/itunes-lookup-album.json b/src/test/fixtures/itunes-lookup-album.json
+new file mode 100644
+index 0000000..83aba05
+--- /dev/null
++++ b/src/test/fixtures/itunes-lookup-album.json
+@@ -0,0 +1,23 @@
++{
++  "resultCount": 1,
++  "results": [
++    {
++      "wrapperType": "collection",
++      "collectionType": "Album",
++      "artistId": 3296287,
++      "collectionId": 1440806041,
++      "artistName": "Queen",
++      "collectionName": "A Night At The Opera (2011 Remaster)",
++      "collectionCensoredName": "A Night At The Opera (2011 Remaster)",
++      "artistViewUrl": "https://music.apple.com/us/artist/queen/3296287?uo=4",
++      "collectionViewUrl": "https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041?uo=4",
++      "artworkUrl60": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/60x60bb.jpg",
++      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/100x100bb.jpg",
++      "trackCount": 12,
++      "country": "USA",
++      "currency": "USD",
++      "releaseDate": "1975-11-21T08:00:00Z",
++      "primaryGenreName": "Rock"
++    }
++  ]
++}
+diff --git a/src/test/fixtures/itunes-lookup-empty.json b/src/test/fixtures/itunes-lookup-empty.json
+new file mode 100644
+index 0000000..2527561
+--- /dev/null
++++ b/src/test/fixtures/itunes-lookup-empty.json
+@@ -0,0 +1 @@
++{ "resultCount": 0, "results": [] }
+diff --git a/src/test/fixtures/itunes-lookup-song.json b/src/test/fixtures/itunes-lookup-song.json
+new file mode 100644
+index 0000000..9b371fc
+--- /dev/null
++++ b/src/test/fixtures/itunes-lookup-song.json
+@@ -0,0 +1,26 @@
++{
++  "resultCount": 1,
++  "results": [
++    {
++      "wrapperType": "track",
++      "kind": "song",
++      "artistId": 3296287,
++      "collectionId": 1440806041,
++      "trackId": 1440806768,
++      "artistName": "Queen",
++      "collectionName": "A Night At The Opera (2011 Remaster)",
++      "trackName": "Bohemian Rhapsody",
++      "artistViewUrl": "https://music.apple.com/us/artist/queen/3296287?uo=4",
++      "collectionViewUrl": "https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768&uo=4",
++      "trackViewUrl": "https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768&uo=4",
++      "artworkUrl30": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/30x30bb.jpg",
++      "artworkUrl60": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/60x60bb.jpg",
++      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/100x100bb.jpg",
++      "releaseDate": "1975-10-31T12:00:00Z",
++      "trackTimeMillis": 354947,
++      "country": "USA",
++      "currency": "USD",
++      "primaryGenreName": "Rock"
++    }
++  ]
++}
+diff --git a/src/test/fixtures/itunes-search-albums.json b/src/test/fixtures/itunes-search-albums.json
+new file mode 100644
+index 0000000..ec14381
+--- /dev/null
++++ b/src/test/fixtures/itunes-search-albums.json
+@@ -0,0 +1,17 @@
++{
++  "resultCount": 1,
++  "results": [
++    {
++      "wrapperType": "collection",
++      "collectionType": "Album",
++      "artistId": 3296287,
++      "collectionId": 1440806041,
++      "artistName": "Queen",
++      "collectionName": "A Night At The Opera (2011 Remaster)",
++      "collectionViewUrl": "https://itunes.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041",
++      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/100x100bb.jpg",
++      "trackCount": 12,
++      "country": "USA"
++    }
++  ]
++}
+diff --git a/src/test/fixtures/itunes-search-empty.json b/src/test/fixtures/itunes-search-empty.json
+new file mode 100644
+index 0000000..2527561
+--- /dev/null
++++ b/src/test/fixtures/itunes-search-empty.json
+@@ -0,0 +1 @@
++{ "resultCount": 0, "results": [] }
+diff --git a/src/test/fixtures/itunes-search-songs.json b/src/test/fixtures/itunes-search-songs.json
+new file mode 100644
+index 0000000..fc15f5c
+--- /dev/null
++++ b/src/test/fixtures/itunes-search-songs.json
+@@ -0,0 +1,47 @@
++{
++  "resultCount": 3,
++  "results": [
++    {
++      "wrapperType": "track",
++      "kind": "song",
++      "artistId": 3296287,
++      "collectionId": 1440806041,
++      "trackId": 1440806768,
++      "artistName": "Queen",
++      "collectionName": "A Night At The Opera (2011 Remaster)",
++      "trackName": "Bohemian Rhapsody",
++      "collectionViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768&uo=4",
++      "trackViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768&uo=4",
++      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/100x100bb.jpg",
++      "country": "USA"
++    },
++    {
++      "wrapperType": "track",
++      "kind": "song",
++      "artistId": 3296287,
++      "collectionId": 1440650428,
++      "trackId": 1440650711,
++      "artistName": "Queen",
++      "collectionName": "Bohemian Rhapsody (The Original Soundtrack)",
++      "trackName": "Bohemian Rhapsody (Live Aid)",
++      "collectionViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody-live-aid/1440650428?i=1440650711&uo=4",
++      "trackViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody-live-aid/1440650428?i=1440650711&uo=4",
++      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/aa/bb/cc/aabbcc/source/100x100bb.jpg",
++      "country": "USA"
++    },
++    {
++      "wrapperType": "track",
++      "kind": "song",
++      "artistId": 5040714,
++      "collectionId": 1564530719,
++      "trackId": 1564530724,
++      "artistName": "The Petersens",
++      "collectionName": "Bluegrass Covers",
++      "trackName": "Bohemian Rhapsody",
++      "collectionViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody/1564530719?i=1564530724&uo=4",
++      "trackViewUrl": "https://itunes.apple.com/us/album/bohemian-rhapsody/1564530719?i=1564530724&uo=4",
++      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/dd/ee/ff/ddeeff/source/100x100bb.jpg",
++      "country": "USA"
++    }
++  ]
++}
+diff --git a/src/test/fixtures/odesli-empty.json b/src/test/fixtures/odesli-empty.json
+new file mode 100644
+index 0000000..0967ef4
+--- /dev/null
++++ b/src/test/fixtures/odesli-empty.json
+@@ -0,0 +1 @@
++{}
+diff --git a/src/test/fixtures/odesli-partial.json b/src/test/fixtures/odesli-partial.json
+new file mode 100644
+index 0000000..9698c23
+--- /dev/null
++++ b/src/test/fixtures/odesli-partial.json
+@@ -0,0 +1,13 @@
++{
++  "entityUniqueId": "SPOTIFY_SONG::0000000000000000000000",
++  "userCountry": "US",
++  "pageUrl": "https://song.link/s/0000000000000000000000",
++  "entitiesByUniqueId": {},
++  "linksByPlatform": {
++    "spotify": {
++      "country": "US",
++      "url": "https://open.spotify.com/track/0000000000000000000000",
++      "entityUniqueId": "SPOTIFY_SONG::0000000000000000000000"
++    }
++  }
++}
+diff --git a/src/test/fixtures/odesli-track.json b/src/test/fixtures/odesli-track.json
+new file mode 100644
+index 0000000..ec38e12
+--- /dev/null
++++ b/src/test/fixtures/odesli-track.json
+@@ -0,0 +1,53 @@
++{
++  "entityUniqueId": "SPOTIFY_SONG::4u7EnebtmKWzUH433cf5Qv",
++  "userCountry": "US",
++  "pageUrl": "https://song.link/s/4u7EnebtmKWzUH433cf5Qv",
++  "entitiesByUniqueId": {
++    "SPOTIFY_SONG::4u7EnebtmKWzUH433cf5Qv": {
++      "id": "4u7EnebtmKWzUH433cf5Qv",
++      "type": "song",
++      "title": "Bohemian Rhapsody - Remastered 2011",
++      "artistName": "Queen",
++      "thumbnailUrl": "https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a",
++      "thumbnailWidth": 640,
++      "thumbnailHeight": 640,
++      "apiProvider": "spotify",
++      "platforms": ["spotify"]
++    },
++    "ITUNES_SONG::1440806768": {
++      "id": "1440806768",
++      "type": "song",
++      "title": "Bohemian Rhapsody",
++      "artistName": "Queen",
++      "thumbnailUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b-9f7a-8f6d-0b0e-1d1c1b1a1f1e/source/512x512bb.jpg",
++      "thumbnailWidth": 512,
++      "thumbnailHeight": 512,
++      "apiProvider": "itunes",
++      "platforms": ["appleMusic", "itunes"]
++    }
++  },
++  "linksByPlatform": {
++    "appleMusic": {
++      "country": "US",
++      "url": "https://geo.music.apple.com/us/album/_/1440806041?i=1440806768&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m",
++      "nativeAppUriMobile": "music://music.apple.com/us/album/_/1440806041?i=1440806768&mt=1&app=music",
++      "entityUniqueId": "ITUNES_SONG::1440806768"
++    },
++    "spotify": {
++      "country": "US",
++      "url": "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv",
++      "nativeAppUriDesktop": "spotify:track:4u7EnebtmKWzUH433cf5Qv",
++      "entityUniqueId": "SPOTIFY_SONG::4u7EnebtmKWzUH433cf5Qv"
++    },
++    "youtube": {
++      "country": "US",
++      "url": "https://www.youtube.com/watch?v=fJ9rUzIMcZQ",
++      "entityUniqueId": "YOUTUBE_VIDEO::fJ9rUzIMcZQ"
++    },
++    "youtubeMusic": {
++      "country": "US",
++      "url": "https://music.youtube.com/watch?v=fJ9rUzIMcZQ",
++      "entityUniqueId": "YOUTUBE_VIDEO::fJ9rUzIMcZQ"
++    }
++  }
++}
+diff --git a/src/test/fixtures/spotify-oembed-album.json b/src/test/fixtures/spotify-oembed-album.json
+new file mode 100644
+index 0000000..62b3221
+--- /dev/null
++++ b/src/test/fixtures/spotify-oembed-album.json
+@@ -0,0 +1,14 @@
++{
++  "html": "<iframe style=\"border-radius: 12px\" width=\"100%\" height=\"352\" title=\"Spotify Embed: A Night At The Opera (2011 Remaster)\" frameborder=\"0\" allowfullscreen allow=\"autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture\" loading=\"lazy\" src=\"https://open.spotify.com/embed/album/1GbtB4zTqAsyfZEsm1RZfx?utm_source=oembed\"></iframe>",
++  "iframe_url": "https://open.spotify.com/embed/album/1GbtB4zTqAsyfZEsm1RZfx?utm_source=oembed",
++  "width": "100%",
++  "height": 352,
++  "version": "1.0",
++  "provider_name": "Spotify",
++  "provider_url": "https://spotify.com",
++  "type": "rich",
++  "title": "A Night At The Opera (2011 Remaster)",
++  "thumbnail_url": "https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02ce4f1737bc8a646c8c4bd25a",
++  "thumbnail_width": 300,
++  "thumbnail_height": 300
++}
+diff --git a/src/test/fixtures/spotify-oembed-html-only.json b/src/test/fixtures/spotify-oembed-html-only.json
+new file mode 100644
+index 0000000..a8aa267
+--- /dev/null
++++ b/src/test/fixtures/spotify-oembed-html-only.json
+@@ -0,0 +1,13 @@
++{
++  "html": "<iframe style=\"border-radius: 12px\" width=\"100%\" height=\"152\" title=\"Spotify Embed: Bohemian Rhapsody - Remastered 2011\" frameborder=\"0\" allowfullscreen allow=\"autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture\" loading=\"lazy\" src=\"https://open.spotify.com/embed/track/4u7EnebtmKWzUH433cf5Qv?utm_source=oembed\"></iframe>",
++  "width": "100%",
++  "height": 152,
++  "version": "1.0",
++  "provider_name": "Spotify",
++  "provider_url": "https://spotify.com",
++  "type": "rich",
++  "title": "Bohemian Rhapsody - Remastered 2011",
++  "thumbnail_url": "https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02ce4f1737bc8a646c8c4bd25a",
++  "thumbnail_width": 300,
++  "thumbnail_height": 300
++}
+diff --git a/src/test/fixtures/spotify-oembed-no-player.json b/src/test/fixtures/spotify-oembed-no-player.json
+new file mode 100644
+index 0000000..8012242
+--- /dev/null
++++ b/src/test/fixtures/spotify-oembed-no-player.json
+@@ -0,0 +1,7 @@
++{
++  "version": "1.0",
++  "provider_name": "Spotify",
++  "provider_url": "https://spotify.com",
++  "type": "rich",
++  "title": "Spotify"
++}
+diff --git a/src/test/fixtures/spotify-oembed-playlist.json b/src/test/fixtures/spotify-oembed-playlist.json
+new file mode 100644
+index 0000000..d186cc1
+--- /dev/null
++++ b/src/test/fixtures/spotify-oembed-playlist.json
+@@ -0,0 +1,14 @@
++{
++  "html": "<iframe style=\"border-radius: 12px\" width=\"100%\" height=\"352\" title=\"Spotify Embed: Today's Top Hits\" frameborder=\"0\" allowfullscreen allow=\"autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture\" loading=\"lazy\" src=\"https://open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYBM5M?utm_source=oembed\"></iframe>",
++  "iframe_url": "https://open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYBM5M?utm_source=oembed",
++  "width": "100%",
++  "height": 352,
++  "version": "1.0",
++  "provider_name": "Spotify",
++  "provider_url": "https://spotify.com",
++  "type": "rich",
++  "title": "Today's Top Hits",
++  "thumbnail_url": "https://image-cdn-fa.spotifycdn.com/image/ab67706f00000002b0fe40a6e1692822f5a9d8f1",
++  "thumbnail_width": 300,
++  "thumbnail_height": 300
++}
+diff --git a/src/test/fixtures/spotify-oembed-track.json b/src/test/fixtures/spotify-oembed-track.json
+new file mode 100644
+index 0000000..ebac561
+--- /dev/null
++++ b/src/test/fixtures/spotify-oembed-track.json
+@@ -0,0 +1,14 @@
++{
++  "html": "<iframe style=\"border-radius: 12px\" width=\"100%\" height=\"152\" title=\"Spotify Embed: Bohemian Rhapsody - Remastered 2011\" frameborder=\"0\" allowfullscreen allow=\"autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture\" loading=\"lazy\" src=\"https://open.spotify.com/embed/track/4u7EnebtmKWzUH433cf5Qv?utm_source=oembed\"></iframe>",
++  "iframe_url": "https://open.spotify.com/embed/track/4u7EnebtmKWzUH433cf5Qv?utm_source=oembed",
++  "width": "100%",
++  "height": 152,
++  "version": "1.0",
++  "provider_name": "Spotify",
++  "provider_url": "https://spotify.com",
++  "type": "rich",
++  "title": "Bohemian Rhapsody - Remastered 2011",
++  "thumbnail_url": "https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02ce4f1737bc8a646c8c4bd25a",
++  "thumbnail_width": 300,
++  "thumbnail_height": 300
++}
