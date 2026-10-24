@@ -1,12 +1,15 @@
 import { useId, useRef } from 'react'
 import {
+  APP_LINK_CLASS,
   ARTIST_PICKER_LABEL,
   CANDIDATE_SEPARATOR,
   COPY_LABEL,
   FALLBACK_TEXTAREA_LABEL,
   FALLBACK_TEXTAREA_ROWS,
   PLATFORMS,
+  PLATFORM_SPOTIFY,
   SHARE_LABEL,
+  SPOTIFY_APP_SEARCH_LABEL,
   TAG_EXACT,
   TAG_SEARCH,
 } from '../constants'
@@ -17,7 +20,7 @@ import CopyButton from './CopyButton'
 type Props = { conversion: Conversion; onChooseArtist(candidate: ArtistCandidate): void }
 
 export default function ResultCard({ conversion, onChooseArtist }: Props) {
-  const { title, artist, art, links, exact, candidates } = conversion
+  const { title, artist, art, links, exact, candidates, spotifyAppSearch } = conversion
   const pickerLabelId = useId()
   const fallbackRef = useRef<HTMLTextAreaElement>(null)
 
@@ -39,6 +42,11 @@ export default function ResultCard({ conversion, onChooseArtist }: Props) {
             <span className={exact[key] ? 'tag exact' : 'tag'}>
               {exact[key] ? TAG_EXACT : TAG_SEARCH}
             </span>
+            {key === PLATFORM_SPOTIFY && spotifyAppSearch && (
+              <a href={spotifyAppSearch} className={APP_LINK_CLASS}>
+                {SPOTIFY_APP_SEARCH_LABEL}
+              </a>
+            )}
             <CopyButton
               text={links[key]}
               label={COPY_LABEL}

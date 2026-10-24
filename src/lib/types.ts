@@ -33,6 +33,7 @@ export type Lookup = {
 export type Conversion = Lookup & {
   links: Record<Platform, string>
   exact: Record<Platform, boolean>
+  spotifyAppSearch?: string
 }
 
 // Response shapes below list only the fields the mappers read.

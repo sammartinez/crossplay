@@ -49,6 +49,7 @@ li a{flex:1;color:var(--fg);text-decoration:none;font-weight:500}
 li a:hover{text-decoration:underline}
 .tag{font:11px var(--mono);letter-spacing:.04em;color:var(--muted)}
 .tag.exact{color:var(--ok)}
+li a.app-link{flex:none;font-size:12px;font-weight:400;color:var(--muted);white-space:nowrap}
 .candidates{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .candidates button{background:none;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--fg)}
 .candidates button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
