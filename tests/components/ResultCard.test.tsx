@@ -42,6 +42,17 @@ const FALLBACK = withSearchFallbacks({
   candidates: CANDIDATES,
 })
 
+// An Apple-source result Odesli gave no Spotify link for: Spotify is a search.
+const SPOTIFY_SEARCH = withSearchFallbacks({
+  title: 'Song',
+  artist: 'First Artist',
+  art: 'https://example.com/art.jpg',
+  links: { apple: CANDIDATES[0].url, ytm: 'https://music.youtube.com/watch?v=abc' },
+})
+const SPOTIFY_WEB_SEARCH = 'https://open.spotify.com/search/Song%20First%20Artist'
+const SPOTIFY_APP_SEARCH = 'spotify:search:Song%20First%20Artist'
+const APP_LINK_NAME = 'Search in Spotify app'
+
 function renderCard(conversion = CONVERSION) {
   const onChooseArtist = vi.fn()
   const view = render(<ResultCard conversion={conversion} onChooseArtist={onChooseArtist} />)
@@ -91,6 +102,92 @@ describe('ResultCard', () => {
     expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
     expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
     expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
+  })
+
+  describe('Spotify app search link', () => {
+    const appLink = () => screen.getByRole('link', { name: APP_LINK_NAME })
+    const queryAppLink = () => screen.queryByRole('link', { name: APP_LINK_NAME })
+
+    it('shows a "Search in Spotify app" link when Spotify is a search', () => {
+      renderCard(SPOTIFY_SEARCH)
+      expect(appLink()).toBeInTheDocument()
+    })
+
+    it('points the app link at spotify:search: with the "title artist" query encoded', () => {
+      renderCard(SPOTIFY_SEARCH)
+      expect(appLink()).toHaveAttribute('href', SPOTIFY_APP_SEARCH)
+    })
+
+    it('puts the app link in the Spotify row', () => {
+      renderCard(SPOTIFY_SEARCH)
+      expect(within(row('Spotify')).getByRole('link', { name: APP_LINK_NAME })).toBe(appLink())
+    })
+
+    it('does not open the app link in a new tab', () => {
+      renderCard(SPOTIFY_SEARCH)
+      expect(appLink()).not.toHaveAttribute('target')
+    })
+
+    it('keeps the "Spotify" link on the web search, tagged SEARCH, with a Copy button', () => {
+      renderCard(SPOTIFY_SEARCH)
+      expect(screen.getByRole('link', { name: 'Spotify' })).toHaveAttribute('href', SPOTIFY_WEB_SEARCH)
+      expect(within(row('Spotify')).getByText('SEARCH')).toBeInTheDocument()
+      expect(within(row('Spotify')).queryByText('EXACT')).not.toBeInTheDocument()
+      expect(within(row('Spotify')).getByRole('button', { name: 'Copy' })).toBeInTheDocument()
+    })
+
+    it('uses the title alone in the app link when the artist is empty', () => {
+      renderCard(withSearchFallbacks({ title: 'Song', artist: '', links: { apple: CANDIDATES[0].url } }))
+      expect(appLink()).toHaveAttribute('href', 'spotify:search:Song')
+    })
+
+    it('shows no app link when Spotify is exact', () => {
+      renderCard()
+      expect(queryAppLink()).not.toBeInTheDocument()
+    })
+
+    it('shows no app link in the Spotify-source fallback, where Spotify stays exact', () => {
+      renderCard(FALLBACK)
+      expect(queryAppLink()).not.toBeInTheDocument()
+    })
+
+    it('shows only one link in the Apple Music and YouTube Music rows', () => {
+      renderCard(SPOTIFY_SEARCH)
+      expect(within(row('Apple Music')).getAllByRole('link')).toHaveLength(1)
+      expect(within(row('YouTube Music')).getAllByRole('link')).toHaveLength(1)
+    })
+
+    it('never shows a link to a spotify: URI unless it is the app link', () => {
+      renderCard(SPOTIFY_SEARCH)
+      const spotifyScheme = screen
+        .getAllByRole('link')
+        .filter((a) => a.getAttribute('href')?.startsWith('spotify:'))
+      expect(spotifyScheme).toEqual([appLink()])
+    })
+
+    describe('copy and share', () => {
+      beforeEach(() => {
+        vi.useFakeTimers()
+      })
+
+      it('copies the web search URL, not the app URI, from the Spotify row', async () => {
+        const writeText = stubClipboard('ok')
+        renderCard(SPOTIFY_SEARCH)
+        await clickAndSettle(within(row('Spotify')).getByRole('button', { name: 'Copy' }))
+        expect(writeText).toHaveBeenCalledWith(SPOTIFY_WEB_SEARCH)
+      })
+
+      it('shares the web search URL and never the spotify: URI', async () => {
+        const writeText = stubClipboard('ok')
+        renderCard(SPOTIFY_SEARCH)
+        await clickAndSettle(screen.getByRole('button', { name: 'Copy share text' }))
+        expect(writeText).toHaveBeenCalledWith(
+          expectedShareText('Song — First Artist', SPOTIFY_SEARCH.links),
+        )
+        expect(writeText.mock.calls[0][0]).toContain(`Spotify: ${SPOTIFY_WEB_SEARCH}`)
+        expect(writeText.mock.calls[0][0]).not.toContain('spotify:')
+      })
+    })
   })
 
   describe('artist picker', () => {

@@ -40,6 +40,8 @@ export const SEARCH_URL_BASES = {
   [PLATFORM_APPLE]: `https://${APPLE_MUSIC_HOST}/us/search?term=`,
   [PLATFORM_YTM]: 'https://music.youtube.com/search?q=',
 }
+// The app scheme opens Spotify's own search; the web search above stays the shared link.
+export const SPOTIFY_APP_SEARCH_URI = 'spotify:search:'
 
 export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
 export const ODESLI_COUNTRY = 'US'
@@ -108,6 +110,8 @@ export const TAG_EXACT = 'EXACT'
 export const TAG_SEARCH = 'SEARCH'
 export const ARTIST_PICKER_LABEL = 'Which artist?'
 export const CANDIDATE_SEPARATOR = ' · '
+export const SPOTIFY_APP_SEARCH_LABEL = 'Search in Spotify app'
+export const APP_LINK_CLASS = 'app-link'
 
 export const COPY_COMMAND = 'copy'
 export const COPY_RESULT_COPIED = 'copied'
