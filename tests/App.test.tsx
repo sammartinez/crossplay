@@ -5,12 +5,20 @@ import App from '../src/App'
 import { SPOTIFY_OEMBED_URL } from '../src/constants'
 import { odesliUrl } from '../src/lib/lookup'
 import { fixture } from './support/fixtures'
-import { type Deferred, deferred, jsonResponse, mockFetch, mockJsonp } from './support/network'
+import {
+  type Deferred,
+  type JsonpOutcome,
+  deferred,
+  jsonResponse,
+  mockFetch,
+  mockJsonp,
+} from './support/network'
 import { expectedShareText, stubClipboard } from './support/clipboard'
 import { expectNotShown, resultRow as row } from './support/dom'
 
-// AC11 (convert UI), AC12 (alternates) and AC13 (copy and share), driven through App's rendered
-// output with only fetch and the JSONP script load stood in.
+// AC11 (convert UI) and AC13 (copy and share), plus PLAN-002 AC4–AC7 (Odesli
+// retry, honest fallback and the artist picker), driven through App's
+// rendered output with only fetch and the JSONP script load stood in.
 
 const PLACEHOLDER = 'https://open.spotify.com/track/…'
 const LOOKING_UP_MESSAGE = 'Looking it up…'
@@ -32,12 +40,26 @@ const ODESLI_LINKS = {
   'YouTube Music': 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
 }
 
-// From itunes-search-songs.json, rewritten to music.apple.com without &uo=
-const ALT_QUEEN_URL = 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768'
-const ALT_PETERSENS_URL = 'https://music.apple.com/us/album/bohemian-rhapsody/1564530719?i=1564530724'
-const ALT_QUEEN = 'Bohemian Rhapsody · Queen'
-const ALT_LIVE_AID = 'Bohemian Rhapsody (Live Aid) · Queen'
-const ALT_PETERSENS = 'Bohemian Rhapsody · The Petersens'
+// The reported case (PLAN-002 AC5–AC7), from spotify-oembed-aint-gettin-high.json
+// and itunes-search-aint-gettin-high.json.
+const REPORTED_LINK = 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb'
+const REPORTED_TITLE = "Ain't Gettin' High"
+const REPORTED_THUMB =
+  'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02a1b2c3d4e5f60718293a4b5c'
+const TITLE_SEARCH = {
+  apple: "https://music.apple.com/us/search?term=Ain't%20Gettin'%20High",
+  ytm: "https://music.youtube.com/search?q=Ain't%20Gettin'%20High",
+}
+const MATSON = 'Samuel Cody Matson'
+const NEON = 'The Neon Prairie Dogs'
+const ZACH = 'Zach Bryan'
+const PICK_MATSON = "Samuel Cody Matson · Ain't Gettin' High"
+const PICK_NEON = "The Neon Prairie Dogs · Ain't Gettin' High"
+const PICK_ZACH = 'Zach Bryan · Younger Years'
+const MATSON_URL = 'https://music.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680'
+const NEON_URL = 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571'
+const NEON_YTM_SEARCH =
+  "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs"
 
 const odesliFails = () => jsonResponse({}, 500)
 
@@ -65,14 +87,15 @@ async function waitForIdle() {
 // Odesli answers every request with odesli-track.json.
 const odesliTrack = () => mockFetch(() => jsonResponse(fixture('odesli-track.json')))
 
-// Odesli fails, oEmbed answers, iTunes search returns `itunes`.
-function spotifyFallback(itunes: unknown = fixture('itunes-search-songs.json')) {
+// Odesli answers 429 every time, oEmbed answers with the reported response,
+// and iTunes search answers as `itunes` says.
+function reportedCase(itunes: JsonpOutcome = { data: fixture('itunes-search-aint-gettin-high.json') }) {
   const fetchMock = mockFetch((url) =>
     url.startsWith(SPOTIFY_OEMBED_URL)
-      ? jsonResponse(fixture('spotify-oembed-track.json'))
-      : odesliFails(),
+      ? jsonResponse(fixture('spotify-oembed-aint-gettin-high.json'))
+      : jsonResponse({}, 429),
   )
-  mockJsonp(() => ({ data: itunes }))
+  mockJsonp(() => itunes)
   return fetchMock
 }
 
@@ -383,75 +406,211 @@ describe('App', () => {
     })
   })
 
-  describe('alternate Apple matches', () => {
-    it('offers a button for each match after the first under "Wrong Apple match?"', async () => {
-      spotifyFallback()
+  describe('the reported Spotify link when Odesli is rate-limited twice', () => {
+    const picker = () => screen.getByRole('group', { name: 'Which artist?' })
+    const queryPicker = () => screen.queryByRole('group', { name: 'Which artist?' })
+    const pick = (name: string) => within(picker()).getByRole('button', { name })
+
+    async function showReported() {
+      reportedCase()
       render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
+      submit(REPORTED_LINK)
       await waitForResult()
-      expect(screen.getByText('Wrong Apple match?')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: ALT_LIVE_AID })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: ALT_PETERSENS })).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: ALT_QUEEN })).not.toBeInTheDocument()
+    }
+
+    it('shows the oEmbed title and artwork', async () => {
+      await showReported()
+      expect(screen.getByText(REPORTED_TITLE)).toBeInTheDocument()
+      expect(artwork()).toHaveAttribute('src', REPORTED_THUMB)
     })
 
-    it('starts with the first match as the Apple link', async () => {
-      spotifyFallback()
-      render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
-      await waitForResult()
-      expect(platformLink('Apple Music')).toHaveAttribute('href', ALT_QUEEN_URL)
+    it('shows no artist name under the title', async () => {
+      await showReported()
+      for (const artist of [MATSON, NEON, ZACH]) {
+        expect(screen.queryByText(artist)).not.toBeInTheDocument()
+      }
     })
 
-    it('makes the clicked match the Apple link, tagged EXACT', async () => {
-      spotifyFallback()
-      render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
-      await waitForResult()
-      fireEvent.click(screen.getByRole('button', { name: ALT_PETERSENS }))
-      expect(platformLink('Apple Music')).toHaveAttribute('href', ALT_PETERSENS_URL)
-      expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
+    it('links Apple Music to a search for the title alone, tagged SEARCH', async () => {
+      await showReported()
+      expect(platformLink('Apple Music')).toHaveAttribute('href', TITLE_SEARCH.apple)
+      expect(within(row('Apple Music')).getByText('SEARCH')).toBeInTheDocument()
+      expect(within(row('Apple Music')).queryByText('EXACT')).not.toBeInTheDocument()
     })
 
-    it('updates the artist to the clicked match', async () => {
-      spotifyFallback()
-      render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
-      await waitForResult()
-      expect(screen.getByText('Queen')).toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: ALT_PETERSENS }))
-      expect(screen.getByText('The Petersens')).toBeInTheDocument()
-      expect(screen.queryByText('Queen')).not.toBeInTheDocument()
+    it('links Spotify to the canonical track, tagged EXACT', async () => {
+      await showReported()
+      expect(platformLink('Spotify')).toHaveAttribute('href', REPORTED_LINK)
+      expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
     })
 
-    it('reorders the alternates so the others follow the clicked match', async () => {
-      spotifyFallback()
-      render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
-      await waitForResult()
-      fireEvent.click(screen.getByRole('button', { name: ALT_PETERSENS }))
-      const altButtons = screen
+    it('links YouTube Music to a search for the title alone, tagged SEARCH', async () => {
+      await showReported()
+      expect(platformLink('YouTube Music')).toHaveAttribute('href', TITLE_SEARCH.ytm)
+      expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
+    })
+
+    it('copies share text whose first line is the title alone', async () => {
+      const writeText = stubClipboard('ok')
+      await showReported()
+      fireEvent.click(screen.getByRole('button', { name: 'Copy share text' }))
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(
+          expectedShareText(REPORTED_TITLE, {
+            apple: TITLE_SEARCH.apple,
+            spotify: REPORTED_LINK,
+            ytm: TITLE_SEARCH.ytm,
+          }),
+        ),
+      )
+    })
+
+    it('asks "Which artist?" with one button per artist in iTunes order', async () => {
+      await showReported()
+      expect(screen.getByText('Which artist?')).toBeInTheDocument()
+      const names = within(picker())
         .getAllByRole('button')
         .map((b) => b.textContent)
-        .filter((text) => text === ALT_QUEEN || text === ALT_LIVE_AID || text === ALT_PETERSENS)
-      expect(altButtons).toEqual([ALT_QUEEN, ALT_LIVE_AID])
+      expect(names).toEqual([PICK_MATSON, PICK_NEON, PICK_ZACH])
     })
 
-    it('shows no alternates block when there was only one match', async () => {
-      const songs = fixture<{ results: unknown[] }>('itunes-search-songs.json')
-      spotifyFallback({ resultCount: 1, results: songs.results.slice(0, 1) })
-      render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
-      await waitForResult()
+    it('presses no artist button at first', async () => {
+      await showReported()
+      for (const name of [PICK_MATSON, PICK_NEON, PICK_ZACH]) {
+        expect(pick(name)).toHaveAttribute('aria-pressed', 'false')
+      }
+    })
+
+    it('does not show the old "Wrong Apple match?" block', async () => {
+      await showReported()
       expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
     })
 
-    it('shows no alternates block for an Odesli result', async () => {
+    describe('after an artist is picked', () => {
+      it('shows that artist under the title', async () => {
+        await showReported()
+        fireEvent.click(pick(PICK_NEON))
+        expect(screen.getByText(NEON)).toBeInTheDocument()
+      })
+
+      it("links Apple Music to that artist's track, tagged EXACT", async () => {
+        await showReported()
+        fireEvent.click(pick(PICK_NEON))
+        expect(platformLink('Apple Music')).toHaveAttribute('href', NEON_URL)
+        expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
+      })
+
+      it('rebuilds the YouTube Music search with "<title> <artist>"', async () => {
+        await showReported()
+        fireEvent.click(pick(PICK_NEON))
+        expect(platformLink('YouTube Music')).toHaveAttribute('href', NEON_YTM_SEARCH)
+        expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
+      })
+
+      it('keeps Spotify on the canonical track link', async () => {
+        await showReported()
+        fireEvent.click(pick(PICK_NEON))
+        expect(platformLink('Spotify')).toHaveAttribute('href', REPORTED_LINK)
+      })
+
+      it('copies share text starting "<title> — <artist>" with the new links', async () => {
+        const writeText = stubClipboard('ok')
+        await showReported()
+        fireEvent.click(pick(PICK_NEON))
+        fireEvent.click(screen.getByRole('button', { name: 'Copy share text' }))
+        await waitFor(() =>
+          expect(writeText).toHaveBeenCalledWith(
+            expectedShareText(`${REPORTED_TITLE} — ${NEON}`, {
+              apple: NEON_URL,
+              spotify: REPORTED_LINK,
+              ytm: NEON_YTM_SEARCH,
+            }),
+          ),
+        )
+      })
+
+      it('presses the picked button and no other', async () => {
+        await showReported()
+        fireEvent.click(pick(PICK_NEON))
+        expect(pick(PICK_MATSON)).toHaveAttribute('aria-pressed', 'false')
+        expect(pick(PICK_NEON)).toHaveAttribute('aria-pressed', 'true')
+        expect(pick(PICK_ZACH)).toHaveAttribute('aria-pressed', 'false')
+      })
+
+      it('keeps every artist button in the same order', async () => {
+        await showReported()
+        fireEvent.click(pick(PICK_NEON))
+        const names = within(picker())
+          .getAllByRole('button')
+          .map((b) => b.textContent)
+        expect(names).toEqual([PICK_MATSON, PICK_NEON, PICK_ZACH])
+      })
+
+      it('switches to another artist when another button is clicked', async () => {
+        await showReported()
+        fireEvent.click(pick(PICK_NEON))
+        fireEvent.click(pick(PICK_MATSON))
+        expect(screen.getByText(MATSON)).toBeInTheDocument()
+        expect(screen.queryByText(NEON)).not.toBeInTheDocument()
+        expect(platformLink('Apple Music')).toHaveAttribute('href', MATSON_URL)
+        expect(pick(PICK_MATSON)).toHaveAttribute('aria-pressed', 'true')
+        expect(pick(PICK_NEON)).toHaveAttribute('aria-pressed', 'false')
+      })
+    })
+
+    it('shows no picker when the iTunes search finds nothing', async () => {
+      reportedCase({ data: fixture('itunes-search-empty.json') })
+      render(<App />)
+      submit(REPORTED_LINK)
+      await waitForResult()
+      expect(screen.getByText(REPORTED_TITLE)).toBeInTheDocument()
+      expect(queryPicker()).not.toBeInTheDocument()
+      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+    })
+
+    it('shows no picker when the iTunes search fails to load', async () => {
+      reportedCase('error')
+      render(<App />)
+      submit(REPORTED_LINK)
+      await waitForResult()
+      expect(screen.getByText(REPORTED_TITLE)).toBeInTheDocument()
+      expect(queryPicker()).not.toBeInTheDocument()
+    })
+  })
+
+  describe('the artist picker elsewhere', () => {
+    it('is not shown for an Odesli result', async () => {
       odesliTrack()
       render(<App />)
       submit(SPOTIFY_TRACK_RAW)
       await waitForResult()
-      expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
+      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+    })
+
+    it('is not shown for an Apple link that falls back to the iTunes lookup', async () => {
+      mockFetch(() => jsonResponse({}, 429))
+      mockJsonp(() => ({ data: fixture('itunes-lookup-song.json') }))
+      render(<App />)
+      submit(APPLE_SONG_LINK)
+      await waitForResult()
+      expect(screen.getByText('Queen')).toBeInTheDocument()
+      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+    })
+
+    it('is not shown when Odesli answers on its second attempt', async () => {
+      let calls = 0
+      mockFetch(() =>
+        ++calls === 1
+          ? Promise.reject(new TypeError('Failed to fetch'))
+          : jsonResponse(fixture('odesli-track.json')),
+      )
+      mockJsonp(() => 'error')
+      render(<App />)
+      submit(SPOTIFY_TRACK_RAW)
+      await waitForResult()
+      expect(screen.getByText(ODESLI_TITLE)).toBeInTheDocument()
+      expect(screen.getByText('Queen')).toBeInTheDocument()
+      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
     })
   })
 

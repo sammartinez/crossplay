@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { canonicalSpotifyLink, parseLink, searchUrl, withSearchFallbacks } from '../../src/lib/links'
-import type { Lookup } from '../../src/lib/types'
+import {
+  canonicalSpotifyLink,
+  parseLink,
+  searchUrl,
+  withArtistChoice,
+  withSearchFallbacks,
+} from '../../src/lib/links'
+import type { ArtistCandidate, Lookup } from '../../src/lib/types'
 
 const TRACK_ID = '4u7EnebtmKWzUH433cf5Qv'
 const ALBUM_ID = '1GbtB4zTqAsyfZEsm1RZfx'
@@ -217,19 +223,19 @@ describe('withSearchFallbacks', () => {
     expect(result.links.apple).toBe('https://music.apple.com/us/search?term=Bohemian%20Rhapsody')
   })
 
-  it('keeps the title, artist, artwork and alternates', () => {
-    const alts = [{ title: 'Bohemian Rhapsody', artist: 'Queen', url: exactLinks.apple }]
+  it('keeps the title, artist, artwork and artist candidates', () => {
+    const candidates = [{ artist: 'Queen', title: 'Bohemian Rhapsody', url: exactLinks.apple }]
     const result = withSearchFallbacks({
       title: 'Bohemian Rhapsody',
       artist: 'Queen',
       art: 'https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a',
       links: { spotify: exactLinks.spotify },
-      alts,
+      candidates,
     })
     expect(result.title).toBe('Bohemian Rhapsody')
     expect(result.artist).toBe('Queen')
     expect(result.art).toBe('https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a')
-    expect(result.alts).toEqual(alts)
+    expect(result.candidates).toEqual(candidates)
   })
 
   it('does not mutate the lookup it is given', () => {
@@ -240,5 +246,100 @@ describe('withSearchFallbacks', () => {
     expect(lookup).not.toHaveProperty('exact')
     expect(result).not.toBe(lookup)
     expect(result.links).not.toBe(lookup.links)
+  })
+})
+
+describe('withArtistChoice', () => {
+  // The reported Spotify fallback: no artist, Spotify exact, Apple and
+  // YouTube Music searches for the title alone.
+  const SPOTIFY_LINK = 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb'
+  const ART = 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02a1b2c3d4e5f60718293a4b5c'
+  const CANDIDATES: ArtistCandidate[] = [
+    {
+      artist: 'Samuel Cody Matson',
+      title: "Ain't Gettin' High",
+      url: 'https://music.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680',
+    },
+    {
+      artist: 'The Neon Prairie Dogs',
+      title: "Ain't Gettin' High",
+      url: 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571',
+    },
+    {
+      artist: 'Zach Bryan',
+      title: 'Younger Years',
+      url: 'https://music.apple.com/us/album/younger-years/1640014741?i=1640014759',
+    },
+  ]
+  const [MATSON, NEON] = CANDIDATES
+  const fallback = () =>
+    withSearchFallbacks({
+      title: "Ain't Gettin' High",
+      artist: '',
+      art: ART,
+      links: { spotify: SPOTIFY_LINK },
+      candidates: CANDIDATES,
+    })
+
+  it("sets the artist to the candidate's artist", () => {
+    expect(withArtistChoice(fallback(), NEON).artist).toBe('The Neon Prairie Dogs')
+  })
+
+  it("makes the candidate's URL the Apple link and marks it exact", () => {
+    const result = withArtistChoice(fallback(), NEON)
+    expect(result.links.apple).toBe(NEON.url)
+    expect(result.exact.apple).toBe(true)
+  })
+
+  it('keeps the exact Spotify link', () => {
+    const result = withArtistChoice(fallback(), NEON)
+    expect(result.links.spotify).toBe(SPOTIFY_LINK)
+    expect(result.exact.spotify).toBe(true)
+  })
+
+  it('rebuilds the YouTube Music search for "title artist" and keeps it not exact', () => {
+    const result = withArtistChoice(fallback(), NEON)
+    expect(result.links.ytm).toBe(
+      "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
+    )
+    expect(result.exact.ytm).toBe(false)
+  })
+
+  it('keeps other exact links as they are', () => {
+    const conversion = withSearchFallbacks({
+      title: 'Song',
+      artist: '',
+      links: { spotify: SPOTIFY_LINK, ytm: 'https://music.youtube.com/watch?v=abc' },
+      candidates: CANDIDATES,
+    })
+    const result = withArtistChoice(conversion, NEON)
+    expect(result.links.ytm).toBe('https://music.youtube.com/watch?v=abc')
+    expect(result.exact).toEqual({ apple: true, spotify: true, ytm: true })
+  })
+
+  it('keeps the title, artwork and candidates in the same order', () => {
+    const result = withArtistChoice(fallback(), NEON)
+    expect(result.title).toBe("Ain't Gettin' High")
+    expect(result.art).toBe(ART)
+    expect(result.candidates).toEqual(CANDIDATES)
+  })
+
+  it('switches every chosen value when a second candidate is chosen', () => {
+    const result = withArtistChoice(withArtistChoice(fallback(), NEON), MATSON)
+    expect(result.artist).toBe('Samuel Cody Matson')
+    expect(result.links.apple).toBe(MATSON.url)
+    expect(result.exact.apple).toBe(true)
+    expect(result.links.ytm).toBe(
+      "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20Samuel%20Cody%20Matson",
+    )
+    expect(result.candidates).toEqual(CANDIDATES)
+  })
+
+  it('returns a new conversion and does not mutate the one it is given', () => {
+    const conversion = fallback()
+    const before = structuredClone(conversion)
+    const result = withArtistChoice(conversion, NEON)
+    expect(conversion).toEqual(before)
+    expect(result).not.toBe(conversion)
   })
 })

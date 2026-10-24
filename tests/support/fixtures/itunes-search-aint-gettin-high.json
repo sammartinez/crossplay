@@ -1,0 +1,75 @@
+{
+  "resultCount": 5,
+  "results": [
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 1598765432,
+      "collectionId": 1712345678,
+      "trackId": 1712345680,
+      "artistName": "Samuel Cody Matson",
+      "collectionName": "Ain't Gettin' High - Single",
+      "trackName": "Ain't Gettin' High",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/1a/2b/3c/1a2b3c4d/source/100x100bb.jpg",
+      "country": "USA"
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 1467890123,
+      "collectionId": 1601234567,
+      "trackId": 1601234571,
+      "artistName": "The Neon Prairie Dogs",
+      "collectionName": "All Downhill From Here",
+      "trackName": "Ain't Gettin' High",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/5e/6f/70/5e6f7081/source/100x100bb.jpg",
+      "country": "USA"
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 1598765432,
+      "collectionId": 1734567890,
+      "trackId": 1734567893,
+      "artistName": "Samuel Cody Matson",
+      "collectionName": "Backroad Hymns",
+      "trackName": "Ain't Gettin' High",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/aint-gettin-high/1734567890?i=1734567893&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/aint-gettin-high/1734567890?i=1734567893&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/9a/8b/7c/9a8b7c6d/source/100x100bb.jpg",
+      "country": "USA"
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 1467890123,
+      "collectionId": 1654321098,
+      "trackId": 1654321105,
+      "artistName": "The Neon Prairie Dogs",
+      "collectionName": "Live at the Grange",
+      "trackName": "Ain't Gettin' High (Live)",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/aint-gettin-high-live/1654321098?i=1654321105&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/aint-gettin-high-live/1654321098?i=1654321105&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/cd/ef/abcdef01/source/100x100bb.jpg",
+      "country": "USA"
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 1314575085,
+      "collectionId": 1640014741,
+      "trackId": 1640014759,
+      "artistName": "Zach Bryan",
+      "collectionName": "American Heartbreak",
+      "trackName": "Younger Years",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/younger-years/1640014741?i=1640014759&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/younger-years/1640014741?i=1640014759&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/12/34/56/12345678/source/100x100bb.jpg",
+      "country": "USA"
+    }
+  ]
+}
