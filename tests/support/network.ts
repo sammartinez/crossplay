@@ -30,7 +30,7 @@ const requestUrl = (input: RequestInfo | URL): string =>
 
 // Replaces global fetch. `respond` gets the request URL and returns the
 // response (or a promise of one, or throws/rejects for a network failure).
-export function mockFetch(respond: (url: string) => Response | Promise<Response>) {
+function mockFetch(respond: (url: string) => Response | Promise<Response>) {
   const fn = vi.fn(async (input: RequestInfo | URL) => respond(requestUrl(input)))
   vi.stubGlobal('fetch', fn)
   return fn

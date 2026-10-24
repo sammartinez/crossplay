@@ -20,9 +20,7 @@ import { expectNotShown, resultRow as row } from './support/dom'
 // AC11 (convert UI) and AC13 (copy and share), plus PLAN-002 AC5–AC7 (honest
 // fallback and the artist picker), driven through App's rendered output with
 // only fetch and the JSONP script load stood in.
-// PLAN-004 AC1–AC4, AC9: lookups go straight to oEmbed/iTunes. Every fetch
-// stand-in here answers only the URLs a test names; any other request, such
-// as one to Odesli, fails the test.
+// PLAN-004 AC1–AC4, AC9: lookups go straight to oEmbed/iTunes.
 
 const PLACEHOLDER = 'https://open.spotify.com/track/…'
 const LOOKING_UP_MESSAGE = 'Looking it up…'

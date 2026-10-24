@@ -20,9 +20,7 @@ import {
 
 // AC10 (conversion state) and, from PLAN-002, AC7 (choosing an artist candidate).
 // The task interface names the result `conversion` and adds `isError`.
-// PLAN-004 AC1/AC9: lookups go straight to oEmbed/iTunes. Every fetch
-// stand-in here answers only the URLs a test names; any other request,
-// such as one to Odesli, fails the test.
+// PLAN-004 AC1/AC9: lookups go straight to oEmbed/iTunes.
 
 const INVALID_LINK_MESSAGE = 'That link isn’t a Spotify or Apple Music track or album.'
 const LOOKING_UP_MESSAGE = 'Looking it up…'

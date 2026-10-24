@@ -25,8 +25,7 @@ import {
 // a Spotify link is one oEmbed fetch, then one iTunes search over JSONP. It
 // fills search links, never retries and never rejects. JSONP times out after
 // 8 s and always cleans up.
-// PLAN-004 AC1: no lookup requests Odesli. Every fetch stand-in here answers
-// only the URLs a test names; any other request fails the test.
+// PLAN-004 AC1: no lookup requests Odesli.
 // PLAN-004 AC2-AC4: the Apple and Spotify paths and their degraded paths.
 
 const JSONP_TIMEOUT = 8000
