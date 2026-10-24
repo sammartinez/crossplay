@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { copyText } from './clipboard'
-import { selectedText, stubClipboard, stubExecCommand } from '../test/clipboard'
+import { copyText } from '../../src/lib/clipboard'
+import { selectedText, stubClipboard, stubExecCommand } from '../support/clipboard'
 
 // AC13: copy with navigator.clipboard, fall back to execCommand('copy') from
 // the textarea, and leave the text selected for a manual copy when both fail.

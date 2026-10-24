@@ -1,6 +1,7 @@
-import { useRef } from 'react'
+import { useId, useRef } from 'react'
 import {
-  ALT_SEPARATOR,
+  ARTIST_PICKER_LABEL,
+  CANDIDATE_SEPARATOR,
   COPY_LABEL,
   FALLBACK_TEXTAREA_LABEL,
   FALLBACK_TEXTAREA_ROWS,
@@ -8,18 +9,16 @@ import {
   SHARE_LABEL,
   TAG_EXACT,
   TAG_SEARCH,
-  WRONG_MATCH_LABEL,
 } from '../constants'
 import { shareText } from '../lib/share'
-import type { AppleAlt, Conversion } from '../lib/types'
+import type { ArtistCandidate, Conversion } from '../lib/types'
 import CopyButton from './CopyButton'
 
-type Props = { conversion: Conversion; onChooseAlt(alt: AppleAlt): void }
+type Props = { conversion: Conversion; onChooseArtist(candidate: ArtistCandidate): void }
 
-export default function ResultCard({ conversion, onChooseAlt }: Props) {
-  const { title, artist, art, links, exact } = conversion
-  // The first alternate is the current Apple link.
-  const otherAlts = (conversion.alts || []).slice(1)
+export default function ResultCard({ conversion, onChooseArtist }: Props) {
+  const { title, artist, art, links, exact, candidates } = conversion
+  const pickerLabelId = useId()
   const fallbackRef = useRef<HTMLTextAreaElement>(null)
 
   return (
@@ -49,16 +48,21 @@ export default function ResultCard({ conversion, onChooseAlt }: Props) {
           </li>
         ))}
       </ul>
-      {otherAlts.length > 0 && (
-        <div className="alts">
-          <span>{WRONG_MATCH_LABEL}</span>
-          {otherAlts.map((alt) => (
-            <button key={alt.url} type="button" onClick={() => onChooseAlt(alt)}>
-              {`${alt.title}${ALT_SEPARATOR}${alt.artist}`}
+      {candidates?.length ? (
+        <div className="candidates" role="group" aria-labelledby={pickerLabelId}>
+          <span id={pickerLabelId}>{ARTIST_PICKER_LABEL}</span>
+          {candidates.map((candidate) => (
+            <button
+              key={candidate.artist}
+              type="button"
+              aria-pressed={candidate.artist === artist}
+              onClick={() => onChooseArtist(candidate)}
+            >
+              {`${candidate.artist}${CANDIDATE_SEPARATOR}${candidate.title}`}
             </button>
           ))}
         </div>
-      )}
+      ) : null}
       <CopyButton
         text={shareText(conversion)}
         label={SHARE_LABEL}

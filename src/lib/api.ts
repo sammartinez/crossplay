@@ -86,8 +86,10 @@ async function viaSource(parsed: ParsedLink): Promise<SourceLookup> {
 }
 
 async function viaOdesliOrSource(parsed: ParsedLink): Promise<SourceLookup> {
+  const url = odesliUrl(parsed.link)
   try {
-    return { lookup: fromOdesli(await fetchJson<OdesliResponse>(odesliUrl(parsed.link))), parsed }
+    const body = await fetchJson<OdesliResponse>(url).catch(() => fetchJson<OdesliResponse>(url))
+    return { lookup: fromOdesli(body), parsed }
   } catch {
     return viaSource(parsed)
   }

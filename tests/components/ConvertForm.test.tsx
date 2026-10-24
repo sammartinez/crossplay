@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import ConvertForm from './ConvertForm'
+import ConvertForm from '../../src/components/ConvertForm'
 
 // AC11: the URL input and Convert button.
 

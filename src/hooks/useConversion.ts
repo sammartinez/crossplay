@@ -12,8 +12,8 @@ import {
   STATUS_IDLE,
 } from '../constants'
 import { lookupLink } from '../lib/api'
-import { parseLink, withAppleAlt } from '../lib/links'
-import type { AppleAlt, Conversion, ParsedLink } from '../lib/types'
+import { parseLink, withArtistChoice } from '../lib/links'
+import type { ArtistCandidate, Conversion, ParsedLink } from '../lib/types'
 import { withParams } from '../lib/url'
 
 type Status = typeof STATUS_IDLE | typeof STATUS_BUSY | typeof STATUS_DONE | typeof STATUS_ERROR
@@ -88,9 +88,11 @@ export function useConversion() {
     })
   }, [])
 
-  const chooseAlt = useCallback((alt: AppleAlt) => {
-    setState((s) => (s.conversion ? { ...s, conversion: withAppleAlt(s.conversion, alt) } : s))
+  const chooseArtist = useCallback((candidate: ArtistCandidate) => {
+    setState((s) =>
+      s.conversion ? { ...s, conversion: withArtistChoice(s.conversion, candidate) } : s,
+    )
   }, [])
 
-  return { ...state, convert, chooseAlt }
+  return { ...state, convert, chooseArtist }
 }

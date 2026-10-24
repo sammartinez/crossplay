@@ -6,7 +6,7 @@ import { APP_NAME, APP_SUBTITLE, SHARE_URL_PARAM, STATUS_BUSY } from './constant
 import { useConversion } from './hooks/useConversion'
 
 export default function App() {
-  const { status, conversion, message, isError, convert, chooseAlt } = useConversion()
+  const { status, conversion, message, isError, convert, chooseArtist } = useConversion()
   const busy = status === STATUS_BUSY
   const [sharedLink] = useState(
     () => new URLSearchParams(location.search).get(SHARE_URL_PARAM) ?? undefined,
@@ -34,7 +34,7 @@ export default function App() {
       <p className={isError ? 'msg err' : 'msg'} role="status">
         {message}
       </p>
-      {conversion && <ResultCard conversion={conversion} onChooseAlt={chooseAlt} />}
+      {conversion && <ResultCard conversion={conversion} onChooseArtist={chooseArtist} />}
     </main>
   )
 }
