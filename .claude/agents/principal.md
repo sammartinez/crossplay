@@ -55,6 +55,8 @@ Set `sets_pattern: true` when the task introduces a structure later work is expe
 
 Plan for reuse (see "Reuse and constants" in `engineering.md`). This is a standing rule from the user, and you don't relax it in plans or reviews. In each task's `interface` or `notes`, name the constants that belong in the constants file (the list is a guide, not an exemption; every literal goes there), the shared modules the task should create or reuse (with paths), and any existing code to reuse. When two tasks need the same logic, the earlier task creates the shared module and the later one imports it.
 
+For a bug fix, the first acceptance criterion reproduces the reported case exactly (same input, real response shapes), and the criteria cover every fallback or degraded path the bug went through. If a fix needs a product decision (what to show when data is unknown), list it as a blocking question rather than choosing silently.
+
 Prefer fewer, larger-than-trivial tasks over many tiny ones. Every task must be independently testable. Define each `interface` precisely; QA writes tests against it before any code exists.
 
 Return a three-line summary: task count, assignees, anything the user must decide.

@@ -1,14 +1,14 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import * as constants from './constants'
+import * as constants from '../src/constants'
 
 // AC15: user-facing text lives in src/constants.ts, not in components.
 // npm test runs vitest from the repo root.
 const COMPONENT_FILES = [
   'src/App.tsx',
   ...readdirSync(resolve(process.cwd(), 'src/components'))
-    .filter((f) => f.endsWith('.tsx') && !f.includes('.test.'))
+    .filter((f) => f.endsWith('.tsx'))
     .map((f) => `src/components/${f}`),
 ]
 const source = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf8')
@@ -21,8 +21,7 @@ const UI_TEXT = {
   CONVERT_LABEL: 'Convert',
   TAG_EXACT: 'EXACT',
   TAG_SEARCH: 'SEARCH',
-  WRONG_MATCH_LABEL: 'Wrong Apple match?',
-  ALT_SEPARATOR: ' · ',
+  ARTIST_PICKER_LABEL: 'Which artist?',
   COPY_LABEL: 'Copy',
   COPIED_LABEL: 'Copied',
   COPY_MANUAL_LABEL: 'Copy it below',
@@ -30,9 +29,17 @@ const UI_TEXT = {
   FALLBACK_TEXTAREA_LABEL: 'Text to copy',
 }
 
+// The plan lets the implementer rename ALT_SEPARATOR to CANDIDATE_SEPARATOR.
+const CANDIDATE_SEPARATOR = ' · '
+const exported = constants as Record<string, unknown>
+
 describe('UI text constants', () => {
   it.each(Object.entries(UI_TEXT))('exports %s', (name, value) => {
-    expect((constants as Record<string, unknown>)[name]).toBe(value)
+    expect(exported[name]).toBe(value)
+  })
+
+  it('exports the " · " candidate separator', () => {
+    expect(exported.CANDIDATE_SEPARATOR ?? exported.ALT_SEPARATOR).toBe(CANDIDATE_SEPARATOR)
   })
 })
 
@@ -49,7 +56,7 @@ describe.each(COMPONENT_FILES)('%s', (file) => {
     expect(source(file)).not.toMatch(/\b1400\b/)
   })
 
-  it.each(Object.values(UI_TEXT).filter((v) => v.trim()))('does not inline "%s"', (text) => {
+  it.each([...Object.values(UI_TEXT), CANDIDATE_SEPARATOR].filter((v) => v.trim()))('does not inline "%s"', (text) => {
     expect(source(file)).not.toMatch(new RegExp(`['"\`]${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`))
   })
 })

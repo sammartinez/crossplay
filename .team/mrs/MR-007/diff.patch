@@ -1,0 +1,562 @@
+diff --git a/src/App.test.tsx b/tests/App.test.tsx
+similarity index 98%
+rename from src/App.test.tsx
+rename to tests/App.test.tsx
+index 4d31319..b9389ae 100644
+--- a/src/App.test.tsx
++++ b/tests/App.test.tsx
+@@ -1,13 +1,13 @@
+ import { StrictMode } from 'react'
+ import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+ import { describe, expect, it } from 'vitest'
+-import App from './App'
+-import { SPOTIFY_OEMBED_URL } from './constants'
+-import { odesliUrl } from './lib/lookup'
+-import { fixture } from './test/fixtures'
+-import { type Deferred, deferred, jsonResponse, mockFetch, mockJsonp } from './test/network'
+-import { expectedShareText, stubClipboard } from './test/clipboard'
+-import { expectNotShown, resultRow as row } from './test/dom'
++import App from '../src/App'
++import { SPOTIFY_OEMBED_URL } from '../src/constants'
++import { odesliUrl } from '../src/lib/lookup'
++import { fixture } from './support/fixtures'
++import { type Deferred, deferred, jsonResponse, mockFetch, mockJsonp } from './support/network'
++import { expectedShareText, stubClipboard } from './support/clipboard'
++import { expectNotShown, resultRow as row } from './support/dom'
+ 
+ // AC11 (convert UI), AC12 (alternates) and AC13 (copy and share), driven through App's rendered
+ // output with only fetch and the JSONP script load stood in.
+diff --git a/src/components/ConvertForm.test.tsx b/tests/components/ConvertForm.test.tsx
+similarity index 97%
+rename from src/components/ConvertForm.test.tsx
+rename to tests/components/ConvertForm.test.tsx
+index 2e24414..70e3216 100644
+--- a/src/components/ConvertForm.test.tsx
++++ b/tests/components/ConvertForm.test.tsx
+@@ -1,6 +1,6 @@
+ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+ import { describe, expect, it, vi } from 'vitest'
+-import ConvertForm from './ConvertForm'
++import ConvertForm from '../../src/components/ConvertForm'
+ 
+ // AC11: the URL input and Convert button.
+ 
+diff --git a/src/components/CopyButton.test.tsx b/tests/components/CopyButton.test.tsx
+similarity index 97%
+rename from src/components/CopyButton.test.tsx
+rename to tests/components/CopyButton.test.tsx
+index f9b78f0..f5acb14 100644
+--- a/src/components/CopyButton.test.tsx
++++ b/tests/components/CopyButton.test.tsx
+@@ -1,7 +1,7 @@
+ import { useRef } from 'react'
+ import { render, screen } from '@testing-library/react'
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+-import CopyButton from './CopyButton'
++import CopyButton from '../../src/components/CopyButton'
+ import {
+   FALLBACK_LABEL,
+   RESET_MS,
+@@ -9,7 +9,7 @@ import {
+   clickAndSettle,
+   stubClipboard,
+   stubExecCommand,
+-} from '../test/clipboard'
++} from '../support/clipboard'
+ 
+ // AC13: the button copies its text, reads "Copied" or "Copy it below", then
+ // goes back to its label after 1.4 s.
+diff --git a/src/components/ResultCard.test.tsx b/tests/components/ResultCard.test.tsx
+similarity index 97%
+rename from src/components/ResultCard.test.tsx
+rename to tests/components/ResultCard.test.tsx
+index b08ef68..b8ee842 100644
+--- a/src/components/ResultCard.test.tsx
++++ b/tests/components/ResultCard.test.tsx
+@@ -1,8 +1,8 @@
+ import { fireEvent, render, screen, within } from '@testing-library/react'
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+-import ResultCard from './ResultCard'
+-import { withSearchFallbacks } from '../lib/links'
+-import type { AppleAlt } from '../lib/types'
++import ResultCard from '../../src/components/ResultCard'
++import { withSearchFallbacks } from '../../src/lib/links'
++import type { AppleAlt } from '../../src/lib/types'
+ import {
+   FALLBACK_LABEL,
+   RESET_MS,
+@@ -12,8 +12,8 @@ import {
+   selectedText,
+   stubClipboard,
+   stubExecCommand,
+-} from '../test/clipboard'
+-import { expectNotShown, isShown, resultRow as row } from '../test/dom'
++} from '../support/clipboard'
++import { expectNotShown, isShown, resultRow as row } from '../support/dom'
+ 
+ // AC11 (result card), AC12 (alternates) and AC13 (copy and share), from a
+ // Conversion prop.
+diff --git a/src/components/ThemeToggle.test.tsx b/tests/components/ThemeToggle.test.tsx
+similarity index 92%
+rename from src/components/ThemeToggle.test.tsx
+rename to tests/components/ThemeToggle.test.tsx
+index 934c6cf..a88687c 100644
+--- a/src/components/ThemeToggle.test.tsx
++++ b/tests/components/ThemeToggle.test.tsx
+@@ -1,8 +1,8 @@
+ import { fireEvent, render, screen } from '@testing-library/react'
+ import { describe, expect, it } from 'vitest'
+-import ThemeToggle from './ThemeToggle'
+-import { mockSystemTheme } from '../test/systemTheme'
+-import { makeStorageThrow } from '../test/storage'
++import ThemeToggle from '../../src/components/ThemeToggle'
++import { mockSystemTheme } from '../support/systemTheme'
++import { makeStorageThrow } from '../support/storage'
+ 
+ const KEY = 'cp-theme'
+ const html = () => document.documentElement
+diff --git a/src/constants.test.ts b/tests/constants.test.ts
+similarity index 78%
+rename from src/constants.test.ts
+rename to tests/constants.test.ts
+index d9869e7..9ba7651 100644
+--- a/src/constants.test.ts
++++ b/tests/constants.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest'
+-import { THEME_STORAGE_KEY } from './constants'
++import { THEME_STORAGE_KEY } from '../src/constants'
+ 
+ describe('constants', () => {
+   it('stores the theme choice under the cp-theme key', () => {
+diff --git a/src/deploy.test.ts b/tests/deploy.test.ts
+similarity index 100%
+rename from src/deploy.test.ts
+rename to tests/deploy.test.ts
+diff --git a/src/hooks/useConversion.test.ts b/tests/hooks/useConversion.test.ts
+similarity index 97%
+rename from src/hooks/useConversion.test.ts
+rename to tests/hooks/useConversion.test.ts
+index bf830a1..d446a89 100644
+--- a/src/hooks/useConversion.test.ts
++++ b/tests/hooks/useConversion.test.ts
+@@ -1,11 +1,11 @@
+ import { act, renderHook, waitFor } from '@testing-library/react'
+ import { describe, expect, it } from 'vitest'
+-import { useConversion } from './useConversion'
+-import { withSearchFallbacks } from '../lib/links'
+-import { SPOTIFY_OEMBED_URL } from '../constants'
+-import { fromOdesli, fromSpotifyFallback, odesliUrl } from '../lib/lookup'
+-import type { ParsedLink } from '../lib/types'
+-import { fixture } from '../test/fixtures'
++import { useConversion } from '../../src/hooks/useConversion'
++import { withSearchFallbacks } from '../../src/lib/links'
++import { SPOTIFY_OEMBED_URL } from '../../src/constants'
++import { fromOdesli, fromSpotifyFallback, odesliUrl } from '../../src/lib/lookup'
++import type { ParsedLink } from '../../src/lib/types'
++import { fixture } from '../support/fixtures'
+ import {
+   type Deferred,
+   deferred,
+@@ -14,7 +14,7 @@ import {
+   jsonpScriptsInDocument,
+   mockFetch,
+   mockJsonp,
+-} from '../test/network'
++} from '../support/network'
+ 
+ // AC10 (conversion state) and AC12 (choosing an alternate Apple match).
+ // The task interface names the result `conversion` and adds `isError`.
+diff --git a/tests/layout.test.ts b/tests/layout.test.ts
+new file mode 100644
+index 0000000..7f1521d
+--- /dev/null
++++ b/tests/layout.test.ts
+@@ -0,0 +1,108 @@
++import { existsSync, readdirSync, readFileSync } from 'node:fs'
++import { dirname, relative, resolve, sep } from 'node:path'
++import { describe, expect, it } from 'vitest'
++
++// MR-007 (PLAN-002 AC1–AC3): tests live under tests/, mirroring src/, with
++// helpers, setup and fixtures in tests/support/. The config points vitest and
++// tsc at the new home, and no production file reaches into tests/.
++// npm test runs vitest from the repo root.
++const root = process.cwd()
++const read = (file: string) => readFileSync(resolve(root, file), 'utf8')
++
++// Every file under dir, as a repo-relative path with forward slashes.
++const filesUnder = (dir: string): string[] =>
++  readdirSync(resolve(root, dir), { withFileTypes: true }).flatMap((entry) => {
++    const path = `${dir}/${entry.name}`
++    return entry.isDirectory() ? filesUnder(path) : [path]
++  })
++
++const TEST_FILE = /\.test\.tsx?$/
++const SOURCE_EXTENSIONS = ['.ts', '.tsx']
++
++// Test files that check the repo as a whole rather than one source module.
++// constants.test.ts is not listed: it mirrors src/constants.ts.
++const REPO_LEVEL_CHECKS = [
++  'tests/layout.test.ts',
++  'tests/deploy.test.ts',
++  'tests/pageShell.test.ts',
++  'tests/literals.test.ts',
++  'tests/lib/purity.test.ts',
++]
++
++// tests/components/ResultCard.test.tsx -> src/components/ResultCard.{ts,tsx}
++const mirroredSources = (testFile: string) => {
++  const base = testFile.replace(/^tests\//, 'src/').replace(TEST_FILE, '')
++  return SOURCE_EXTENSIONS.map((ext) => base + ext)
++}
++
++const testFiles = filesUnder('tests').filter((f) => TEST_FILE.test(f))
++const sourceFiles = filesUnder('src')
++
++describe('src/', () => {
++  it('contains no test or spec files', () => {
++    expect(sourceFiles.filter((f) => /\.(test|spec)\./.test(f))).toEqual([])
++  })
++
++  it('has no src/test directory', () => {
++    expect(existsSync(resolve(root, 'src/test'))).toBe(false)
++  })
++
++  it('does not import from tests/', () => {
++    const SPECIFIER = /(?:\bfrom|\bimport)\s*\(?\s*['"]([^'"]+)['"]/g
++    const offenders = sourceFiles
++      .filter((f) => /\.(ts|tsx|js|jsx)$/.test(f))
++      .flatMap((file) =>
++        [...read(file).matchAll(SPECIFIER)]
++          .map((m) => m[1])
++          .filter((spec) => {
++            const target = spec.startsWith('.')
++              ? relative(root, resolve(root, dirname(file), spec)).split(sep).join('/')
++              : spec.replace(/^\//, '')
++            return target === 'tests' || target.startsWith('tests/')
++          })
++          .map((spec) => `${file}: ${spec}`),
++      )
++    expect(offenders).toEqual([])
++  })
++})
++
++describe('tests/', () => {
++  it('holds the moved test files', () => {
++    expect(testFiles).toEqual(
++      expect.arrayContaining([
++        'tests/App.test.tsx',
++        'tests/components/ResultCard.test.tsx',
++        'tests/hooks/useConversion.test.ts',
++        'tests/lib/lookup.test.ts',
++      ]),
++    )
++  })
++
++  it.each(testFiles.filter((f) => !REPO_LEVEL_CHECKS.includes(f)))(
++    '%s mirrors a source file under src/',
++    (testFile) => {
++      expect(mirroredSources(testFile).filter((src) => existsSync(resolve(root, src)))).not.toEqual([])
++    },
++  )
++
++  it('keeps every non-test file under tests/support/', () => {
++    expect(filesUnder('tests').filter((f) => !TEST_FILE.test(f) && !f.startsWith('tests/support/'))).toEqual([])
++  })
++
++  it('keeps JSON fixtures under tests/support/fixtures/', () => {
++    const json = filesUnder('tests').filter((f) => f.endsWith('.json'))
++    expect(json.length).toBeGreaterThan(0)
++    expect(json.filter((f) => !f.startsWith('tests/support/fixtures/'))).toEqual([])
++  })
++})
++
++describe('config', () => {
++  it('sets vitest setupFiles to tests/support/setup.ts', () => {
++    expect(read('vite.config.ts')).toMatch(/setupFiles:\s*\[\s*['"]tests\/support\/setup\.ts['"],?\s*\]/)
++  })
++
++  it('includes tests in tsconfig.json', () => {
++    const tsconfig = JSON.parse(read('tsconfig.json')) as { include?: string[] }
++    expect(tsconfig.include).toContain('tests')
++  })
++})
+diff --git a/src/lib/api.test.ts b/tests/lib/api.test.ts
+similarity index 97%
+rename from src/lib/api.test.ts
+rename to tests/lib/api.test.ts
+index 295a92e..5844bd6 100644
+--- a/src/lib/api.test.ts
++++ b/tests/lib/api.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it, vi } from 'vitest'
+-import { jsonp, lookupLink } from './api'
+-import { withSearchFallbacks } from './links'
++import { jsonp, lookupLink } from '../../src/lib/api'
++import { withSearchFallbacks } from '../../src/lib/links'
+ import {
+   fromItunesLookup,
+   fromOdesli,
+@@ -9,16 +9,16 @@ import {
+   itunesSearchUrl,
+   odesliUrl,
+   spotifyOembedUrl,
+-} from './lookup'
+-import type { ParsedLink } from './types'
+-import { fixture } from '../test/fixtures'
++} from '../../src/lib/lookup'
++import type { ParsedLink } from '../../src/lib/types'
++import { fixture } from '../support/fixtures'
+ import {
+   fetchedUrls,
+   jsonResponse,
+   jsonpScriptsInDocument,
+   mockFetch,
+   mockJsonp,
+-} from '../test/network'
++} from '../support/network'
+ 
+ // AC9: lookupLink tries Odesli, falls back by source, fills search links,
+ // and JSONP times out after 8 s and always cleans up.
+diff --git a/src/lib/clipboard.test.ts b/tests/lib/clipboard.test.ts
+similarity index 97%
+rename from src/lib/clipboard.test.ts
+rename to tests/lib/clipboard.test.ts
+index 0d96543..578f60e 100644
+--- a/src/lib/clipboard.test.ts
++++ b/tests/lib/clipboard.test.ts
+@@ -1,6 +1,6 @@
+ import { afterEach, describe, expect, it } from 'vitest'
+-import { copyText } from './clipboard'
+-import { selectedText, stubClipboard, stubExecCommand } from '../test/clipboard'
++import { copyText } from '../../src/lib/clipboard'
++import { selectedText, stubClipboard, stubExecCommand } from '../support/clipboard'
+ 
+ // AC13: copy with navigator.clipboard, fall back to execCommand('copy') from
+ // the textarea, and leave the text selected for a manual copy when both fail.
+diff --git a/src/lib/links.test.ts b/tests/lib/links.test.ts
+similarity index 99%
+rename from src/lib/links.test.ts
+rename to tests/lib/links.test.ts
+index 3c24444..8158f51 100644
+--- a/src/lib/links.test.ts
++++ b/tests/lib/links.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from 'vitest'
+-import { canonicalSpotifyLink, parseLink, searchUrl, withSearchFallbacks } from './links'
+-import type { Lookup } from './types'
++import { canonicalSpotifyLink, parseLink, searchUrl, withSearchFallbacks } from '../../src/lib/links'
++import type { Lookup } from '../../src/lib/types'
+ 
+ const TRACK_ID = '4u7EnebtmKWzUH433cf5Qv'
+ const ALBUM_ID = '1GbtB4zTqAsyfZEsm1RZfx'
+diff --git a/src/lib/lookup.test.ts b/tests/lib/lookup.test.ts
+similarity index 98%
+rename from src/lib/lookup.test.ts
+rename to tests/lib/lookup.test.ts
+index 96b8987..bcdd772 100644
+--- a/src/lib/lookup.test.ts
++++ b/tests/lib/lookup.test.ts
+@@ -8,9 +8,9 @@ import {
+   odesliUrl,
+   resolveSpotifyShortLink,
+   spotifyOembedUrl,
+-} from './lookup'
+-import type { ParsedLink } from './types'
+-import { fixture } from '../test/fixtures'
++} from '../../src/lib/lookup'
++import type { ParsedLink } from '../../src/lib/types'
++import { fixture } from '../support/fixtures'
+ 
+ const SPOTIFY_TRACK: ParsedLink = {
+   src: 'spotify',
+diff --git a/src/lib/purity.test.ts b/tests/lib/purity.test.ts
+similarity index 100%
+rename from src/lib/purity.test.ts
+rename to tests/lib/purity.test.ts
+diff --git a/src/lib/share.test.ts b/tests/lib/share.test.ts
+similarity index 97%
+rename from src/lib/share.test.ts
+rename to tests/lib/share.test.ts
+index ecd322e..253f693 100644
+--- a/src/lib/share.test.ts
++++ b/tests/lib/share.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest'
+-import { shareText } from './share'
++import { shareText } from '../../src/lib/share'
+ 
+ const links = {
+   apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
+diff --git a/src/lib/text.test.ts b/tests/lib/text.test.ts
+similarity index 92%
+rename from src/lib/text.test.ts
+rename to tests/lib/text.test.ts
+index 0ac7f8b..3605d75 100644
+--- a/src/lib/text.test.ts
++++ b/tests/lib/text.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest'
+-import { titleCase } from './text'
++import { titleCase } from '../../src/lib/text'
+ 
+ describe('titleCase', () => {
+   it('capitalizes the first letter of each word', () => {
+diff --git a/src/lib/theme.test.ts b/tests/lib/theme.test.ts
+similarity index 94%
+rename from src/lib/theme.test.ts
+rename to tests/lib/theme.test.ts
+index 3318348..0bbe38d 100644
+--- a/src/lib/theme.test.ts
++++ b/tests/lib/theme.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from 'vitest'
+-import { applyTheme, nextTheme, readStoredTheme } from './theme'
+-import { makeStorageThrow } from '../test/storage'
++import { applyTheme, nextTheme, readStoredTheme } from '../../src/lib/theme'
++import { makeStorageThrow } from '../support/storage'
+ 
+ const KEY = 'cp-theme'
+ 
+diff --git a/src/literals.test.ts b/tests/literals.test.ts
+similarity index 98%
+rename from src/literals.test.ts
+rename to tests/literals.test.ts
+index 3189709..fe64e5e 100644
+--- a/src/literals.test.ts
++++ b/tests/literals.test.ts
+@@ -1,7 +1,7 @@
+ import { readdirSync, readFileSync } from 'node:fs'
+ import { resolve } from 'node:path'
+ import { describe, expect, it } from 'vitest'
+-import * as constants from './constants'
++import * as constants from '../src/constants'
+ 
+ // AC15: user-facing text lives in src/constants.ts, not in components.
+ // npm test runs vitest from the repo root.
+diff --git a/src/pageShell.test.ts b/tests/pageShell.test.ts
+similarity index 100%
+rename from src/pageShell.test.ts
+rename to tests/pageShell.test.ts
+diff --git a/src/test/clipboard.ts b/tests/support/clipboard.ts
+similarity index 100%
+rename from src/test/clipboard.ts
+rename to tests/support/clipboard.ts
+diff --git a/src/test/dom.ts b/tests/support/dom.ts
+similarity index 100%
+rename from src/test/dom.ts
+rename to tests/support/dom.ts
+diff --git a/src/test/fixtures.ts b/tests/support/fixtures.ts
+similarity index 56%
+rename from src/test/fixtures.ts
+rename to tests/support/fixtures.ts
+index e5bb083..5ec0229 100644
+--- a/src/test/fixtures.ts
++++ b/tests/support/fixtures.ts
+@@ -1,9 +1,9 @@
+ import { readFileSync } from 'node:fs'
+ import { resolve } from 'node:path'
+ 
+-// Loads a JSON fixture from src/test/fixtures/. The return type is inferred
++// Loads a JSON fixture from tests/support/fixtures/. The return type is inferred
+ // from where the fixture is passed, so tests don't name the response types.
+ // npm test runs vitest from the repo root.
+ export function fixture<T>(name: string): T {
+-  return JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/fixtures', name), 'utf8')) as T
++  return JSON.parse(readFileSync(resolve(process.cwd(), 'tests/support/fixtures', name), 'utf8')) as T
+ }
+diff --git a/src/test/fixtures/itunes-lookup-album.json b/tests/support/fixtures/itunes-lookup-album.json
+similarity index 100%
+rename from src/test/fixtures/itunes-lookup-album.json
+rename to tests/support/fixtures/itunes-lookup-album.json
+diff --git a/src/test/fixtures/itunes-lookup-empty.json b/tests/support/fixtures/itunes-lookup-empty.json
+similarity index 100%
+rename from src/test/fixtures/itunes-lookup-empty.json
+rename to tests/support/fixtures/itunes-lookup-empty.json
+diff --git a/src/test/fixtures/itunes-lookup-song.json b/tests/support/fixtures/itunes-lookup-song.json
+similarity index 100%
+rename from src/test/fixtures/itunes-lookup-song.json
+rename to tests/support/fixtures/itunes-lookup-song.json
+diff --git a/src/test/fixtures/itunes-search-albums.json b/tests/support/fixtures/itunes-search-albums.json
+similarity index 100%
+rename from src/test/fixtures/itunes-search-albums.json
+rename to tests/support/fixtures/itunes-search-albums.json
+diff --git a/src/test/fixtures/itunes-search-empty.json b/tests/support/fixtures/itunes-search-empty.json
+similarity index 100%
+rename from src/test/fixtures/itunes-search-empty.json
+rename to tests/support/fixtures/itunes-search-empty.json
+diff --git a/src/test/fixtures/itunes-search-songs.json b/tests/support/fixtures/itunes-search-songs.json
+similarity index 100%
+rename from src/test/fixtures/itunes-search-songs.json
+rename to tests/support/fixtures/itunes-search-songs.json
+diff --git a/src/test/fixtures/odesli-empty.json b/tests/support/fixtures/odesli-empty.json
+similarity index 100%
+rename from src/test/fixtures/odesli-empty.json
+rename to tests/support/fixtures/odesli-empty.json
+diff --git a/src/test/fixtures/odesli-partial.json b/tests/support/fixtures/odesli-partial.json
+similarity index 100%
+rename from src/test/fixtures/odesli-partial.json
+rename to tests/support/fixtures/odesli-partial.json
+diff --git a/src/test/fixtures/odesli-track.json b/tests/support/fixtures/odesli-track.json
+similarity index 100%
+rename from src/test/fixtures/odesli-track.json
+rename to tests/support/fixtures/odesli-track.json
+diff --git a/src/test/fixtures/spotify-oembed-album.json b/tests/support/fixtures/spotify-oembed-album.json
+similarity index 100%
+rename from src/test/fixtures/spotify-oembed-album.json
+rename to tests/support/fixtures/spotify-oembed-album.json
+diff --git a/src/test/fixtures/spotify-oembed-html-only.json b/tests/support/fixtures/spotify-oembed-html-only.json
+similarity index 100%
+rename from src/test/fixtures/spotify-oembed-html-only.json
+rename to tests/support/fixtures/spotify-oembed-html-only.json
+diff --git a/src/test/fixtures/spotify-oembed-no-player.json b/tests/support/fixtures/spotify-oembed-no-player.json
+similarity index 100%
+rename from src/test/fixtures/spotify-oembed-no-player.json
+rename to tests/support/fixtures/spotify-oembed-no-player.json
+diff --git a/src/test/fixtures/spotify-oembed-playlist.json b/tests/support/fixtures/spotify-oembed-playlist.json
+similarity index 100%
+rename from src/test/fixtures/spotify-oembed-playlist.json
+rename to tests/support/fixtures/spotify-oembed-playlist.json
+diff --git a/src/test/fixtures/spotify-oembed-track.json b/tests/support/fixtures/spotify-oembed-track.json
+similarity index 100%
+rename from src/test/fixtures/spotify-oembed-track.json
+rename to tests/support/fixtures/spotify-oembed-track.json
+diff --git a/src/test/network.ts b/tests/support/network.ts
+similarity index 100%
+rename from src/test/network.ts
+rename to tests/support/network.ts
+diff --git a/src/test/setup.ts b/tests/support/setup.ts
+similarity index 100%
+rename from src/test/setup.ts
+rename to tests/support/setup.ts
+diff --git a/src/test/storage.ts b/tests/support/storage.ts
+similarity index 100%
+rename from src/test/storage.ts
+rename to tests/support/storage.ts
+diff --git a/src/test/systemTheme.ts b/tests/support/systemTheme.ts
+similarity index 100%
+rename from src/test/systemTheme.ts
+rename to tests/support/systemTheme.ts
+diff --git a/tsconfig.json b/tsconfig.json
+index 21dbefc..56e5aa1 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -15,5 +15,5 @@
+     "noUnusedParameters": true,
+     "noFallthroughCasesInSwitch": true
+   },
+-  "include": ["src", "vite.config.ts"]
++  "include": ["src", "tests", "vite.config.ts"]
+ }
+diff --git a/vite.config.ts b/vite.config.ts
+index 92042f4..97822a0 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -7,6 +7,6 @@ export default defineConfig({
+   server: { port: 5173, strictPort: true },
+   test: {
+     environment: 'jsdom',
+-    setupFiles: ['src/test/setup.ts'],
++    setupFiles: ['tests/support/setup.ts'],
+   },
+ })

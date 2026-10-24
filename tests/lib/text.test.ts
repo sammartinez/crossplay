@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { titleCase } from './text'
+import { titleCase } from '../../src/lib/text'
 
 describe('titleCase', () => {
   it('capitalizes the first letter of each word', () => {

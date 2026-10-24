@@ -18,14 +18,14 @@ export type ParsedLink = {
   link: string
 }
 
-export type AppleAlt = { title: string; artist: string; url: string }
+export type ArtistCandidate = { artist: string; title: string; url: string }
 
 export type Lookup = {
   title?: string
   artist?: string
   art?: string
   links: Partial<Record<Platform, string>>
-  alts?: AppleAlt[]
+  candidates?: ArtistCandidate[]
 }
 
 export type Conversion = Lookup & {

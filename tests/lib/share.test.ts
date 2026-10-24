@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shareText } from './share'
+import { shareText } from '../../src/lib/share'
 
 const links = {
   apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
