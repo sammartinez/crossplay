@@ -28,7 +28,7 @@ import { spotifyParsedLink } from './links'
 import { titleCase } from './text'
 import { withParams } from './url'
 import type {
-  AppleAlt,
+  ArtistCandidate,
   ItunesResponse,
   Kind,
   Lookup,
@@ -92,24 +92,35 @@ export const itunesSearchUrl = (title: string, kind?: Kind): string =>
     [ITUNES_COUNTRY_PARAM]: ITUNES_COUNTRY,
   })
 
+function firstPerArtist(candidates: ArtistCandidate[]): ArtistCandidate[] {
+  const seen = new Set<string>()
+  return candidates.filter(({ artist }) => {
+    const key = artist.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+// oEmbed has no artist and a title search can't confirm one, so the artist
+// stays blank and the search hits are only offered as candidates to pick.
 export function fromSpotifyFallback(
   oembed: SpotifyOembed,
   itunesBody: ItunesResponse | null,
   p: ParsedLink,
 ): Lookup {
-  const alts: AppleAlt[] = (itunesBody?.results || []).map((r) => ({
+  const searchHits: ArtistCandidate[] = (itunesBody?.results || []).map((r) => ({
+    artist: (r.artistName || '').trim(),
     title: r.trackName || r.collectionName || '',
-    artist: r.artistName || '',
     url: (r.trackViewUrl || r.collectionViewUrl || '')
       .replace(ITUNES_HOST, APPLE_MUSIC_HOST)
       .split(ITUNES_TRACKING_PARAM)[0],
   }))
-  const top = alts[0]
   return {
     title: oembed.title,
-    artist: top?.artist || '',
+    artist: '',
     art: oembed.thumbnail_url,
-    links: { spotify: p.link, apple: top?.url },
-    alts,
+    links: { spotify: p.link },
+    candidates: firstPerArtist(searchHits.filter(({ artist, url }) => artist && url)),
   }
 }

@@ -16,7 +16,7 @@ import {
   SPOTIFY_SHORT_HOST,
   WORD_SEPARATOR,
 } from '../constants'
-import type { AppleAlt, Conversion, Kind, Lookup, ParsedLink, Platform } from './types'
+import type { ArtistCandidate, Conversion, Kind, Lookup, ParsedLink, Platform } from './types'
 
 const isKind = (segment: string): segment is Kind =>
   segment === KIND_TRACK || segment === KIND_ALBUM
@@ -83,10 +83,16 @@ export function withSearchFallbacks(lookup: Lookup): Conversion {
   return { ...lookup, links, exact }
 }
 
-export const withAppleAlt = (conversion: Conversion, alt: AppleAlt): Conversion => ({
-  ...conversion,
-  artist: alt.artist,
-  links: { ...conversion.links, apple: alt.url },
-  exact: { ...conversion.exact, apple: true },
-  alts: [alt, ...(conversion.alts || []).filter((other) => other !== alt)],
-})
+export function withArtistChoice(conversion: Conversion, candidate: ArtistCandidate): Conversion {
+  const exactLinks: Lookup['links'] = {}
+  for (const { key } of PLATFORMS) {
+    if (conversion.exact[key]) exactLinks[key] = conversion.links[key]
+  }
+  return withSearchFallbacks({
+    title: conversion.title,
+    artist: candidate.artist,
+    art: conversion.art,
+    links: { ...exactLinks, [PLATFORM_APPLE]: candidate.url },
+    candidates: conversion.candidates,
+  })
+}
