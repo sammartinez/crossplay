@@ -280,6 +280,18 @@ describe('useConversion', () => {
     })
   })
 
+  describe('after unmount', () => {
+    it('does not replace the page URL when the lookup finishes', async () => {
+      const pending = deferred<Response>()
+      mockFetch(() => pending.promise)
+      const { result, unmount } = renderHook(() => useConversion())
+      act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+      unmount()
+      await act(async () => pending.resolve(jsonResponse(fixture('odesli-track.json'))))
+      expect(sharedLink()).toBeNull()
+    })
+  })
+
   describe('chooseAlt', () => {
     async function convertedWithAlts() {
       spotifyFallback(fixture('spotify-oembed-track.json'))
