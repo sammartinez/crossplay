@@ -5,7 +5,10 @@ type Props = { busy: boolean; initialValue?: string; onConvert(raw: string): voi
 
 export default function ConvertForm({ busy, initialValue, onConvert }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const convertInput = () => onConvert(inputRef.current!.value)
+  // The ref is null if the form unmounts before the deferred paste callback runs.
+  const convertInput = () => {
+    if (inputRef.current) onConvert(inputRef.current.value)
+  }
 
   return (
     <form
