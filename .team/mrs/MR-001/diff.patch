@@ -1,0 +1,950 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..b947077
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,2 @@
++node_modules/
++dist/
+diff --git a/eslint.config.js b/eslint.config.js
+new file mode 100644
+index 0000000..3769733
+--- /dev/null
++++ b/eslint.config.js
+@@ -0,0 +1,20 @@
++import js from '@eslint/js'
++import reactHooks from 'eslint-plugin-react-hooks'
++import reactRefresh from 'eslint-plugin-react-refresh'
++import { defineConfig, globalIgnores } from 'eslint/config'
++import globals from 'globals'
++import tseslint from 'typescript-eslint'
++
++export default defineConfig([
++  globalIgnores(['dist', '.team']),
++  {
++    files: ['**/*.{ts,tsx}'],
++    extends: [
++      js.configs.recommended,
++      tseslint.configs.recommended,
++      reactHooks.configs.flat.recommended,
++      reactRefresh.configs.vite,
++    ],
++    languageOptions: { globals: globals.browser },
++  },
++])
+diff --git a/index.html b/index.html
+index 90c1b45..1cc6934 100644
+--- a/index.html
++++ b/index.html
+@@ -4,8 +4,8 @@
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+ <title>Crossplay</title>
+-<link rel="icon" href="favicon.png">
+-<link rel="apple-touch-icon" href="apple-touch-icon.png">
++<link rel="icon" href="/favicon.png">
++<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+ <meta name="apple-mobile-web-app-capable" content="yes">
+ <meta name="mobile-web-app-capable" content="yes">
+ <meta name="apple-mobile-web-app-title" content="Crossplay">
+@@ -14,253 +14,9 @@
+ <meta name="theme-color" content="#111317" media="(prefers-color-scheme: dark)">
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+ <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+-<style>
+-/* One narrow column: input, then a single result card. */
+-:root{
+-  --bg:#f4f5f7; --card:#fff; --fg:#16181d; --muted:#6b7080; --line:#e3e5ea;
+-  --accent:#d9730d; --ok:#1f8a4c;
+-  --sans:"Instrument Sans",system-ui,-apple-system,sans-serif;
+-  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+-}
+-@media (prefers-color-scheme:dark){[data-theme]:not([data-theme="light"]),:root:not([data-theme]){--bg:#111317;--card:#1a1d22;--fg:#eceef2;--muted:#8d93a1;--line:#2a2e36;--accent:#f39a3d;--ok:#4cc27e;color-scheme:dark}}
+-[data-theme="dark"]{--bg:#111317;--card:#1a1d22;--fg:#eceef2;--muted:#8d93a1;--line:#2a2e36;--accent:#f39a3d;--ok:#4cc27e;color-scheme:dark}
+-[data-theme="light"]{color-scheme:light}
+-
+-*{box-sizing:border-box}
+-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+-main{max-width:520px;margin:0 auto;padding:calc(48px + env(safe-area-inset-top,0px)) 16px calc(64px + env(safe-area-inset-bottom,0px));display:grid;gap:20px}
+-header{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+-h1{margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em}
+-.sub{margin:2px 0 0;color:var(--muted);font-size:14px}
+-button{font:inherit;color:inherit;cursor:pointer}
+-.ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:13px;color:var(--muted)}
+-.ghost:hover{color:var(--fg)}
+-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+-
+-form{display:flex;gap:8px}
+-input{flex:1;min-width:0;font:13px var(--mono);padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+-.primary{border:0;border-radius:10px;padding:0 16px;background:var(--fg);color:var(--bg);font-weight:600}
+-.primary:disabled{opacity:.5;cursor:default}
+-
+-/* crossfader: knob slides while a lookup runs */
+-.fader{height:4px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
+-.fader::after{content:"";position:absolute;top:0;left:0;width:28%;height:100%;border-radius:2px;background:var(--accent);opacity:0}
+-.busy .fader::after{opacity:1;animation:fade 1s ease-in-out infinite alternate}
+-@keyframes fade{to{left:72%}}
+-@media (prefers-reduced-motion:reduce){.busy .fader::after{animation:none;left:36%}}
+-
+-.msg{margin:0;color:var(--muted);font-size:14px}
+-.msg.err{color:var(--accent)}
+-
+-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:14px}
+-.track{display:flex;gap:12px;align-items:center}
+-.track img{width:56px;height:56px;border-radius:6px;object-fit:cover;background:var(--line);flex:none}
+-.track div{min-width:0}
+-.title{font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+-.artist{color:var(--muted);font-size:14px}
+-ul{list-style:none;margin:0;padding:0;display:grid}
+-li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+-li a{flex:1;color:var(--fg);text-decoration:none;font-weight:500}
+-li a:hover{text-decoration:underline}
+-.tag{font:11px var(--mono);letter-spacing:.04em;color:var(--muted)}
+-.tag.exact{color:var(--ok)}
+-.alts{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+-.alts button{background:none;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--fg)}
+-textarea{width:100%;font:12px/1.5 var(--mono);padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);resize:vertical}
+-.share{width:100%;padding:12px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:600}
+-</style>
+ </head>
+ <body>
+-<main id="app">
+-  <header>
+-    <div>
+-      <h1>Crossplay</h1>
+-      <p class="sub">Paste a Spotify or Apple Music link. Get it everywhere.</p>
+-    </div>
+-    <button class="ghost" id="theme" type="button">Theme</button>
+-  </header>
+-
+-  <form id="form">
+-    <input id="url" type="url" placeholder="https://open.spotify.com/track/…" autocomplete="off" required>
+-    <button class="primary" id="go">Convert</button>
+-  </form>
+-  <div class="fader" aria-hidden="true"></div>
+-  <p class="msg" id="msg" role="status"></p>
+-
+-  <section class="card" id="result" hidden>
+-    <div class="track">
+-      <img id="art" alt="">
+-      <div><div class="title" id="title"></div><div class="artist" id="artist"></div></div>
+-    </div>
+-    <ul id="links"></ul>
+-    <div class="alts" id="alts" hidden></div>
+-    <button class="share" id="share" type="button">Copy share text</button>
+-    <textarea id="fallback" rows="5" readonly hidden aria-label="Text to copy"></textarea>
+-  </section>
+-</main>
+-
+-<script>
+-const $ = id => document.getElementById(id);
+-const PLATFORMS = [['apple','Apple Music'],['spotify','Spotify'],['ytm','YouTube Music']];
+-let state = null;
+-
+-/* ---------- theme: follows system, button overrides ---------- */
+-function setTheme(t){
+-  for (const el of [document.documentElement, document.body]) t ? el.setAttribute('data-theme', t) : el.removeAttribute('data-theme');
+-  try { t ? localStorage.setItem('cp-theme', t) : localStorage.removeItem('cp-theme'); } catch {}
+-}
+-try { setTheme(localStorage.getItem('cp-theme')); } catch {}
+-$('theme').onclick = () => {
+-  const cur = document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+-  setTheme(cur === 'dark' ? 'light' : 'dark');
+-};
+-
+-/* ---------- link parsing ---------- */
+-function parse(raw){
+-  let u; try { u = new URL(raw.trim()); } catch { return null; }
+-  const parts = u.pathname.split('/').filter(Boolean);
+-  if (/(^|\.)spotify\.(com|link)$/.test(u.hostname)) {
+-    const i = parts.findIndex(p => p === 'track' || p === 'album');
+-    if (i < 0) return u.hostname.endsWith('spotify.link') ? { src:'spotify', link:u.href } : null;
+-    const kind = parts[i], id = parts[i+1];
+-    return { src:'spotify', kind, id, link:`https://open.spotify.com/${kind}/${id}` };
+-  }
+-  if (u.hostname === 'music.apple.com') {
+-    const song = u.searchParams.get('i');
+-    const kind = song || parts.includes('song') ? 'track' : parts.includes('album') ? 'album' : null;
+-    if (!kind) return null;
+-    const id = song || parts[parts.length-1];
+-    const slug = (parts[parts.length-2] || '').replace(/-/g,' ');
+-    return { src:'apple', kind, id, slug, link:u.origin + u.pathname + (song ? `?i=${song}` : '') };
+-  }
+-  return null;
+-}
+-
+-/* ---------- lookups ---------- */
+-const search = {
+-  spotify: q => 'https://open.spotify.com/search/' + encodeURIComponent(q),
+-  apple:   q => 'https://music.apple.com/us/search?term=' + encodeURIComponent(q),
+-  ytm:     q => 'https://music.youtube.com/search?q=' + encodeURIComponent(q),
+-};
+-
+-function jsonp(url){
+-  return new Promise((resolve, reject) => {
+-    const cb = 'cp' + Math.random().toString(36).slice(2), s = document.createElement('script');
+-    const done = () => { clearTimeout(t); delete window[cb]; s.remove(); };
+-    const t = setTimeout(() => { done(); reject(new Error('timeout')); }, 8000);
+-    window[cb] = d => { done(); resolve(d); };
+-    s.onerror = () => { done(); reject(new Error('network')); };
+-    s.src = url + '&callback=' + cb;
+-    document.head.appendChild(s);
+-  });
+-}
+-
+-// Primary: Odesli gives exact links on every platform in one call.
+-async function viaOdesli(p){
+-  const r = await fetch('https://api.song.link/v1-alpha.1/links?userCountry=US&url=' + encodeURIComponent(p.link));
+-  if (!r.ok) throw new Error('odesli ' + r.status);
+-  const d = await r.json(), e = d.entitiesByUniqueId?.[d.entityUniqueId] || {}, L = d.linksByPlatform || {};
+-  return { title:e.title, artist:e.artistName, art:e.thumbnailUrl,
+-           links:{ apple:L.appleMusic?.url, spotify:L.spotify?.url, ytm:L.youtubeMusic?.url } };
+-}
+-
+-// Fallback: no third party. Exact link for the source, search links for the rest.
+-async function viaApple(p){
+-  const entity = p.kind === 'album' ? 'album' : 'song';
+-  const d = await jsonp(`https://itunes.apple.com/lookup?id=${p.id}&entity=${entity}&country=us`).catch(() => null);
+-  const it = d?.results?.[0];
+-  return { title: it?.trackName || it?.collectionName || titleCase(p.slug), artist: it?.artistName || '',
+-           art: it?.artworkUrl100?.replace('100x100','300x300'), links:{ apple:p.link } };
+-}
+-async function viaSpotify(p){
+-  const o = await fetch('https://open.spotify.com/oembed?url=' + encodeURIComponent(p.link)).then(r => r.json());
+-  if (!p.kind) { // spotify.link short link: oEmbed's player URL carries the real track/album ID
+-    const m = (o.iframe_url || o.html || '').match(/embed\/(track|album)\/([A-Za-z0-9]+)/);
+-    if (!m) throw new Error('short link');
+-    Object.assign(p, { kind:m[1], id:m[2], link:`https://open.spotify.com/${m[1]}/${m[2]}` });
+-  }
+-  const entity = p.kind === 'album' ? 'album' : 'song';
+-  const d = await jsonp(`https://itunes.apple.com/search?term=${encodeURIComponent(o.title)}&entity=${entity}&limit=5&country=us`).catch(() => null);
+-  const alts = (d?.results || []).map(r => ({ title:r.trackName || r.collectionName, artist:r.artistName,
+-    url:(r.trackViewUrl || r.collectionViewUrl || '').replace('itunes.apple.com','music.apple.com').split('&uo=')[0] }));
+-  const top = alts[0];
+-  return { title:o.title, artist: top?.artist || '', art:o.thumbnail_url,
+-           links:{ spotify:p.link, apple: top?.url }, alts };
+-}
+-
+-const titleCase = s => (s || '').replace(/\b\w/g, c => c.toUpperCase());
+-
+-let runId = 0, lastLink = null;
+-async function convert(raw){
+-  const p = parse(raw);
+-  if (!p) return show('That link isn’t a Spotify or Apple Music track or album.', true);
+-  if (p.link === lastLink && $('app').classList.contains('busy')) return; // paste + Convert on the same link
+-  const id = ++runId; lastLink = p.link;
+-  $('app').classList.add('busy'); $('go').disabled = true; show('Looking it up…');
+-  let res;
+-  try { res = await viaOdesli(p); }
+-  catch { try { res = p.src === 'apple' ? await viaApple(p) : await viaSpotify(p); } catch { res = null; } }
+-  if (id !== runId) return; // a newer lookup started; drop this result
+-  $('app').classList.remove('busy'); $('go').disabled = false;
+-  if (!res || !res.title) return show(p.src === 'spotify' && !p.kind
+-    ? 'Couldn’t open that short link. In Spotify, tap Share → Copy link, then paste the full open.spotify.com link.'
+-    : 'Couldn’t find that one. Check the link and try again.', true);
+-  res.exact = {};
+-  const q = [res.title, res.artist].filter(Boolean).join(' ');
+-  for (const [k] of PLATFORMS) { res.exact[k] = !!res.links[k]; res.links[k] ||= search[k](q); }
+-  state = res; render(); show('');
+-  try { history.replaceState(null, '', '?u=' + encodeURIComponent(p.link)); } catch {}
+-}
+-
+-/* ---------- UI ---------- */
+-function show(text, err){ $('msg').textContent = text; $('msg').className = 'msg' + (err ? ' err' : ''); if (err) $('result').hidden = true; }
+-
+-function render(){
+-  const s = state;
+-  $('title').textContent = s.title; $('artist').textContent = s.artist;
+-  $('art').src = s.art || ''; $('art').hidden = !s.art;
+-  $('links').replaceChildren(...PLATFORMS.map(([k, name]) => {
+-    const li = document.createElement('li');
+-    li.innerHTML = `<a target="_blank" rel="noopener"></a><span class="tag"></span><button class="ghost" type="button">Copy</button>`;
+-    li.querySelector('a').href = s.links[k]; li.querySelector('a').textContent = name;
+-    const tag = li.querySelector('.tag'); tag.textContent = s.exact[k] ? 'EXACT' : 'SEARCH'; tag.classList.toggle('exact', s.exact[k]);
+-    li.querySelector('button').onclick = e => copy(s.links[k], e.target);
+-    return li;
+-  }));
+-  const alts = (s.alts || []).slice(1);
+-  $('alts').hidden = !alts.length;
+-  $('alts').replaceChildren(...(alts.length ? [Object.assign(document.createElement('span'), { textContent:'Wrong Apple match?' })] : []),
+-    ...alts.map(a => { const b = document.createElement('button'); b.type = 'button';
+-      b.textContent = `${a.title} · ${a.artist}`;
+-      b.onclick = () => { s.links.apple = a.url; s.exact.apple = true; s.artist = a.artist; s.alts = [a, ...s.alts.filter(x => x !== a)]; render(); };
+-      return b; }));
+-  $('result').hidden = false;
+-}
+-
+-async function copy(text, btn){
+-  const label = btn.textContent, box = $('fallback');
+-  box.hidden = true;
+-  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; }
+-  catch {
+-    // Clipboard API blocked: try the old select-and-copy, else leave the text selected for a manual copy
+-    box.value = text; box.hidden = false; box.select();
+-    let ok = false; try { ok = document.execCommand('copy'); } catch {}
+-    if (ok) { box.hidden = true; btn.textContent = 'Copied'; }
+-    else { btn.textContent = 'Copy it below'; box.focus(); }
+-  }
+-  setTimeout(() => btn.textContent = label, 1400);
+-}
+-
+-$('share').onclick = e => {
+-  const s = state, head = s.artist ? `${s.title} — ${s.artist}` : s.title;
+-  copy(`${head}\n\nApple Music: ${s.links.apple}\nSpotify: ${s.links.spotify}\nYouTube Music: ${s.links.ytm}`, e.target);
+-};
+-$('form').onsubmit = e => { e.preventDefault(); convert($('url').value); };
+-$('url').addEventListener('paste', () => setTimeout(() => convert($('url').value)));
+-
+-// ?u=<link> auto-converts (used by the iOS Shortcut and shared Crossplay links)
+-const u = new URLSearchParams(location.search).get('u');
+-if (u) { $('url').value = u; convert(u); }
+-</script>
++<div id="app"></div>
++<script type="module" src="/src/main.tsx"></script>
+ </body>
+ </html>
+diff --git a/package.json b/package.json
+index 6fbd11f..aeebd05 100644
+--- a/package.json
++++ b/package.json
+@@ -12,9 +12,37 @@
+   },
+   "license": "MIT",
+   "author": "Sam Martinez",
+-  "type": "commonjs",
++  "type": "module",
+   "main": "index.html",
+   "scripts": {
+-    "test": "echo \"Error: no test specified\" && exit 1"
++    "dev": "vite",
++    "build": "vite build",
++    "preview": "vite preview",
++    "test": "vitest run",
++    "lint": "eslint .",
++    "typecheck": "tsc --noEmit"
++  },
++  "dependencies": {
++    "react": "^19.3.1",
++    "react-dom": "^19.3.1"
++  },
++  "devDependencies": {
++    "@eslint/js": "^9.39.5",
++    "@testing-library/dom": "^10.4.2",
++    "@testing-library/jest-dom": "^7.0.1",
++    "@testing-library/react": "^16.3.3",
++    "@types/node": "^22.20.5",
++    "@types/react": "^19.3.0",
++    "@types/react-dom": "^19.3.0",
++    "@vitejs/plugin-react": "^6.1.2",
++    "eslint": "^9.39.5",
++    "eslint-plugin-react-hooks": "^7.1.1",
++    "eslint-plugin-react-refresh": "^0.5.7",
++    "globals": "^17.13.0",
++    "jsdom": "^29.1.1",
++    "typescript": "~6.0.3",
++    "typescript-eslint": "^8.72.0",
++    "vite": "^8.3.5",
++    "vitest": "^5.0.5"
+   }
+ }
+diff --git a/apple-touch-icon.png b/public/apple-touch-icon.png
+similarity index 100%
+rename from apple-touch-icon.png
+rename to public/apple-touch-icon.png
+diff --git a/favicon.png b/public/favicon.png
+similarity index 100%
+rename from favicon.png
+rename to public/favicon.png
+diff --git a/src/App.test.tsx b/src/App.test.tsx
+new file mode 100644
+index 0000000..778ad3f
+--- /dev/null
++++ b/src/App.test.tsx
+@@ -0,0 +1,22 @@
++import { render, screen } from '@testing-library/react'
++import { describe, expect, it } from 'vitest'
++import App from './App'
++
++describe('App', () => {
++  it('shows the app name as the page heading', () => {
++    render(<App />)
++    expect(screen.getByRole('heading', { level: 1, name: 'Crossplay' })).toBeInTheDocument()
++  })
++
++  it('shows the subtitle under the heading', () => {
++    render(<App />)
++    expect(
++      screen.getByText('Paste a Spotify or Apple Music link. Get it everywhere.'),
++    ).toBeInTheDocument()
++  })
++
++  it('shows the Theme button', () => {
++    render(<App />)
++    expect(screen.getByRole('button', { name: 'Theme' })).toBeInTheDocument()
++  })
++})
+diff --git a/src/App.tsx b/src/App.tsx
+new file mode 100644
+index 0000000..e03dc15
+--- /dev/null
++++ b/src/App.tsx
+@@ -0,0 +1,17 @@
++import ThemeToggle from './components/ThemeToggle'
++import { APP_NAME, APP_SUBTITLE } from './constants'
++
++export default function App() {
++  return (
++    <main>
++      <header>
++        <div>
++          <h1>{APP_NAME}</h1>
++          <p className="sub">{APP_SUBTITLE}</p>
++        </div>
++        <ThemeToggle />
++      </header>
++      {/* T4 adds the convert form and status line here, and the result card below. */}
++    </main>
++  )
++}
+diff --git a/src/components/ThemeToggle.test.tsx b/src/components/ThemeToggle.test.tsx
+new file mode 100644
+index 0000000..934c6cf
+--- /dev/null
++++ b/src/components/ThemeToggle.test.tsx
+@@ -0,0 +1,69 @@
++import { fireEvent, render, screen } from '@testing-library/react'
++import { describe, expect, it } from 'vitest'
++import ThemeToggle from './ThemeToggle'
++import { mockSystemTheme } from '../test/systemTheme'
++import { makeStorageThrow } from '../test/storage'
++
++const KEY = 'cp-theme'
++const html = () => document.documentElement
++
++function renderToggle() {
++  render(<ThemeToggle />)
++  return screen.getByRole('button', { name: 'Theme' })
++}
++
++describe('ThemeToggle', () => {
++  it('renders a button labeled Theme', () => {
++    expect(renderToggle()).toBeInTheDocument()
++  })
++
++  it('leaves the theme to the system until clicked', () => {
++    mockSystemTheme('dark')
++    renderToggle()
++    expect(html()).not.toHaveAttribute('data-theme')
++    expect(localStorage.getItem(KEY)).toBeNull()
++  })
++
++  it('switches to light on first click when the system shows dark', () => {
++    mockSystemTheme('dark')
++    fireEvent.click(renderToggle())
++    expect(html()).toHaveAttribute('data-theme', 'light')
++  })
++
++  it('switches to dark on first click when the system shows light', () => {
++    mockSystemTheme('light')
++    fireEvent.click(renderToggle())
++    expect(html()).toHaveAttribute('data-theme', 'dark')
++  })
++
++  it('toggles from the theme set on <html> rather than the system theme', () => {
++    mockSystemTheme('light')
++    html().setAttribute('data-theme', 'dark')
++    fireEvent.click(renderToggle())
++    expect(html()).toHaveAttribute('data-theme', 'light')
++  })
++
++  it('alternates between light and dark on repeated clicks', () => {
++    mockSystemTheme('light')
++    const button = renderToggle()
++    fireEvent.click(button)
++    expect(html()).toHaveAttribute('data-theme', 'dark')
++    fireEvent.click(button)
++    expect(html()).toHaveAttribute('data-theme', 'light')
++    fireEvent.click(button)
++    expect(html()).toHaveAttribute('data-theme', 'dark')
++  })
++
++  it('persists the chosen theme under cp-theme', () => {
++    mockSystemTheme('light')
++    fireEvent.click(renderToggle())
++    expect(localStorage.getItem(KEY)).toBe('dark')
++  })
++
++  it('still toggles the theme when storage throws', () => {
++    mockSystemTheme('dark')
++    makeStorageThrow()
++    fireEvent.click(renderToggle())
++    expect(html()).toHaveAttribute('data-theme', 'light')
++  })
++})
+diff --git a/src/components/ThemeToggle.tsx b/src/components/ThemeToggle.tsx
+new file mode 100644
+index 0000000..0959d6a
+--- /dev/null
++++ b/src/components/ThemeToggle.tsx
+@@ -0,0 +1,10 @@
++import { THEME_TOGGLE_LABEL } from '../constants'
++import { applyTheme, nextTheme, shownTheme } from '../lib/theme'
++
++export default function ThemeToggle() {
++  return (
++    <button className="ghost" type="button" onClick={() => applyTheme(nextTheme(shownTheme()))}>
++      {THEME_TOGGLE_LABEL}
++    </button>
++  )
++}
+diff --git a/src/constants.test.ts b/src/constants.test.ts
+new file mode 100644
+index 0000000..d9869e7
+--- /dev/null
++++ b/src/constants.test.ts
+@@ -0,0 +1,8 @@
++import { describe, expect, it } from 'vitest'
++import { THEME_STORAGE_KEY } from './constants'
++
++describe('constants', () => {
++  it('stores the theme choice under the cp-theme key', () => {
++    expect(THEME_STORAGE_KEY).toBe('cp-theme')
++  })
++})
+diff --git a/src/constants.ts b/src/constants.ts
+new file mode 100644
+index 0000000..ff821f8
+--- /dev/null
++++ b/src/constants.ts
+@@ -0,0 +1,10 @@
++export const APP_NAME = 'Crossplay'
++export const APP_SUBTITLE = 'Paste a Spotify or Apple Music link. Get it everywhere.'
++export const APP_ROOT_ID = 'app'
++
++export const THEME_LIGHT = 'light'
++export const THEME_DARK = 'dark'
++export const THEME_STORAGE_KEY = 'cp-theme'
++export const THEME_ATTRIBUTE = 'data-theme'
++export const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
++export const THEME_TOGGLE_LABEL = 'Theme'
+diff --git a/src/lib/theme.test.ts b/src/lib/theme.test.ts
+new file mode 100644
+index 0000000..3318348
+--- /dev/null
++++ b/src/lib/theme.test.ts
+@@ -0,0 +1,77 @@
++import { describe, expect, it } from 'vitest'
++import { applyTheme, nextTheme, readStoredTheme } from './theme'
++import { makeStorageThrow } from '../test/storage'
++
++const KEY = 'cp-theme'
++
++describe('readStoredTheme', () => {
++  it('returns null when no theme has been stored', () => {
++    expect(readStoredTheme()).toBeNull()
++  })
++
++  it('returns the stored dark theme', () => {
++    localStorage.setItem(KEY, 'dark')
++    expect(readStoredTheme()).toBe('dark')
++  })
++
++  it('returns the stored light theme', () => {
++    localStorage.setItem(KEY, 'light')
++    expect(readStoredTheme()).toBe('light')
++  })
++
++  it('returns null instead of throwing when storage throws', () => {
++    makeStorageThrow()
++    expect(readStoredTheme()).toBeNull()
++  })
++})
++
++describe('applyTheme', () => {
++  it('sets data-theme on <html> to the given theme', () => {
++    applyTheme('dark')
++    expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
++  })
++
++  it('persists the given theme under cp-theme', () => {
++    applyTheme('light')
++    expect(localStorage.getItem(KEY)).toBe('light')
++  })
++
++  it('makes the applied theme readable by readStoredTheme', () => {
++    applyTheme('dark')
++    expect(readStoredTheme()).toBe('dark')
++  })
++
++  it('removes data-theme from <html> when given null, so the system theme shows', () => {
++    applyTheme('dark')
++    applyTheme(null)
++    expect(document.documentElement).not.toHaveAttribute('data-theme')
++  })
++
++  it('clears the stored theme when given null', () => {
++    applyTheme('dark')
++    applyTheme(null)
++    expect(localStorage.getItem(KEY)).toBeNull()
++  })
++
++  it('still sets data-theme when storage throws', () => {
++    makeStorageThrow()
++    expect(() => applyTheme('dark')).not.toThrow()
++    expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
++  })
++
++  it('does not throw when clearing the theme and storage throws', () => {
++    makeStorageThrow()
++    expect(() => applyTheme(null)).not.toThrow()
++    expect(document.documentElement).not.toHaveAttribute('data-theme')
++  })
++})
++
++describe('nextTheme', () => {
++  it('returns light after dark', () => {
++    expect(nextTheme('dark')).toBe('light')
++  })
++
++  it('returns dark after light', () => {
++    expect(nextTheme('light')).toBe('dark')
++  })
++})
+diff --git a/src/lib/theme.ts b/src/lib/theme.ts
+new file mode 100644
+index 0000000..e9f37f3
+--- /dev/null
++++ b/src/lib/theme.ts
+@@ -0,0 +1,46 @@
++import {
++  DARK_SCHEME_QUERY,
++  THEME_ATTRIBUTE,
++  THEME_DARK,
++  THEME_LIGHT,
++  THEME_STORAGE_KEY,
++} from '../constants'
++
++export type Theme = typeof THEME_LIGHT | typeof THEME_DARK
++
++const isTheme = (value: string | null): value is Theme =>
++  value === THEME_LIGHT || value === THEME_DARK
++
++// Storage throws in Safari private mode and when site data is blocked. The
++// theme is a convenience, so a storage failure means "no saved choice".
++export function readStoredTheme(): Theme | null {
++  try {
++    const stored = localStorage.getItem(THEME_STORAGE_KEY)
++    return isTheme(stored) ? stored : null
++  } catch {
++    return null
++  }
++}
++
++// null hands the theme back to the system.
++export function applyTheme(theme: Theme | null): void {
++  const root = document.documentElement
++  if (theme) root.setAttribute(THEME_ATTRIBUTE, theme)
++  else root.removeAttribute(THEME_ATTRIBUTE)
++  try {
++    if (theme) localStorage.setItem(THEME_STORAGE_KEY, theme)
++    else localStorage.removeItem(THEME_STORAGE_KEY)
++  } catch {
++    // Not persisting is the recovery; the theme still applies for this visit.
++  }
++}
++
++export function shownTheme(): Theme {
++  const chosen = document.documentElement.getAttribute(THEME_ATTRIBUTE)
++  if (isTheme(chosen)) return chosen
++  return matchMedia(DARK_SCHEME_QUERY).matches ? THEME_DARK : THEME_LIGHT
++}
++
++export function nextTheme(current: Theme): Theme {
++  return current === THEME_DARK ? THEME_LIGHT : THEME_DARK
++}
+diff --git a/src/main.tsx b/src/main.tsx
+new file mode 100644
+index 0000000..e1f7aca
+--- /dev/null
++++ b/src/main.tsx
+@@ -0,0 +1,15 @@
++import { StrictMode } from 'react'
++import { createRoot } from 'react-dom/client'
++import App from './App'
++import { APP_ROOT_ID } from './constants'
++import { applyTheme, readStoredTheme } from './lib/theme'
++import './styles.css'
++
++// Before the first render, so a saved choice shows without a flash of the system theme.
++applyTheme(readStoredTheme())
++
++createRoot(document.getElementById(APP_ROOT_ID)!).render(
++  <StrictMode>
++    <App />
++  </StrictMode>,
++)
+diff --git a/src/pageShell.test.ts b/src/pageShell.test.ts
+new file mode 100644
+index 0000000..ef459b0
+--- /dev/null
++++ b/src/pageShell.test.ts
+@@ -0,0 +1,76 @@
++import { existsSync, readFileSync } from 'node:fs'
++import { resolve } from 'node:path'
++import { describe, expect, it } from 'vitest'
++
++// AC4: the Vite entry page keeps the metas and links that make Add to Home
++// Screen and theming work, and its icons are served from public/.
++// npm test runs vitest from the repo root.
++const root = process.cwd()
++const page = readFileSync(resolve(root, 'index.html'), 'utf8')
++
++const tags = (name: string) => page.match(new RegExp(`<${name}\\b[^>]*>`, 'gi')) ?? []
++const metaNamed = (name: string) =>
++  tags('meta').filter((t) => new RegExp(`name=["']${name}["']`, 'i').test(t))
++const linkWithRel = (rel: string) =>
++  tags('link').filter((t) => new RegExp(`rel=["']${rel}["']`, 'i').test(t))
++
++describe('index.html page shell', () => {
++  it('is titled Crossplay', () => {
++    expect(page).toMatch(/<title>\s*Crossplay\s*<\/title>/)
++  })
++
++  it('keeps the viewport meta with viewport-fit=cover', () => {
++    const [viewport] = metaNamed('viewport')
++    expect(viewport).toBeDefined()
++    expect(viewport).toMatch(/viewport-fit=cover/)
++  })
++
++  it('keeps the apple-mobile-web-app metas', () => {
++    expect(metaNamed('apple-mobile-web-app-capable')).toHaveLength(1)
++    expect(metaNamed('apple-mobile-web-app-title')).toHaveLength(1)
++    expect(metaNamed('apple-mobile-web-app-status-bar-style')).toHaveLength(1)
++  })
++
++  it('keeps the mobile-web-app-capable meta', () => {
++    expect(metaNamed('mobile-web-app-capable')).toHaveLength(1)
++  })
++
++  it('keeps a theme-color meta for both light and dark schemes', () => {
++    const themeColors = metaNamed('theme-color')
++    expect(themeColors).toHaveLength(2)
++    expect(themeColors.some((t) => /prefers-color-scheme:\s*light/.test(t))).toBe(true)
++    expect(themeColors.some((t) => /prefers-color-scheme:\s*dark/.test(t))).toBe(true)
++  })
++
++  it('keeps the Google Fonts links', () => {
++    expect(linkWithRel('preconnect').some((t) => t.includes('https://fonts.googleapis.com'))).toBe(true)
++    expect(
++      linkWithRel('stylesheet').some((t) => t.includes('https://fonts.googleapis.com/css2')),
++    ).toBe(true)
++  })
++
++  it('links the favicon and serves it from public/', () => {
++    expect(linkWithRel('icon').some((t) => /favicon\.png/.test(t))).toBe(true)
++    expect(existsSync(resolve(root, 'public/favicon.png'))).toBe(true)
++  })
++
++  it('links the apple-touch-icon and serves it from public/', () => {
++    expect(linkWithRel('apple-touch-icon').some((t) => /apple-touch-icon\.png/.test(t))).toBe(true)
++    expect(existsSync(resolve(root, 'public/apple-touch-icon.png'))).toBe(true)
++  })
++
++  it('loads the app from src/main.tsx as a module script', () => {
++    expect(
++      tags('script').some((t) => /type=["']module["']/.test(t) && /src=["'][^"']*src\/main\.tsx["']/.test(t)),
++    ).toBe(true)
++  })
++
++  it('has no inline script left over from the old page', () => {
++    const inline = tags('script').filter((t) => !/\bsrc=/.test(t))
++    expect(inline).toHaveLength(0)
++  })
++
++  it('provides the #app mount point', () => {
++    expect(page).toMatch(/id=["']app["']/)
++  })
++})
+diff --git a/src/styles.css b/src/styles.css
+new file mode 100644
+index 0000000..860c3e6
+--- /dev/null
++++ b/src/styles.css
+@@ -0,0 +1,55 @@
++/* One narrow column: input, then a single result card. */
++:root{
++  --bg:#f4f5f7; --card:#fff; --fg:#16181d; --muted:#6b7080; --line:#e3e5ea;
++  --accent:#d9730d; --ok:#1f8a4c;
++  --sans:"Instrument Sans",system-ui,-apple-system,sans-serif;
++  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
++}
++/* Dark palette applies when the system is dark and the user has not chosen light
++   (no data-theme), or whenever the user has chosen dark. Light is the :root default. */
++@media (prefers-color-scheme:dark){[data-theme]:not([data-theme="light"]),:root:not([data-theme]){--bg:#111317;--card:#1a1d22;--fg:#eceef2;--muted:#8d93a1;--line:#2a2e36;--accent:#f39a3d;--ok:#4cc27e;color-scheme:dark}}
++[data-theme="dark"]{--bg:#111317;--card:#1a1d22;--fg:#eceef2;--muted:#8d93a1;--line:#2a2e36;--accent:#f39a3d;--ok:#4cc27e;color-scheme:dark}
++[data-theme="light"]{color-scheme:light}
++
++*{box-sizing:border-box}
++body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
++main{max-width:520px;margin:0 auto;padding:calc(48px + env(safe-area-inset-top,0px)) 16px calc(64px + env(safe-area-inset-bottom,0px));display:grid;gap:20px}
++header{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
++h1{margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em}
++.sub{margin:2px 0 0;color:var(--muted);font-size:14px}
++button{font:inherit;color:inherit;cursor:pointer}
++.ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:13px;color:var(--muted)}
++.ghost:hover{color:var(--fg)}
++:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
++
++form{display:flex;gap:8px}
++input{flex:1;min-width:0;font:13px var(--mono);padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
++.primary{border:0;border-radius:10px;padding:0 16px;background:var(--fg);color:var(--bg);font-weight:600}
++.primary:disabled{opacity:.5;cursor:default}
++
++/* crossfader: knob slides while a lookup runs */
++.fader{height:4px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
++.fader::after{content:"";position:absolute;top:0;left:0;width:28%;height:100%;border-radius:2px;background:var(--accent);opacity:0}
++.busy .fader::after{opacity:1;animation:fade 1s ease-in-out infinite alternate}
++@keyframes fade{to{left:72%}}
++@media (prefers-reduced-motion:reduce){.busy .fader::after{animation:none;left:36%}}
++
++.msg{margin:0;color:var(--muted);font-size:14px}
++.msg.err{color:var(--accent)}
++
++.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:14px}
++.track{display:flex;gap:12px;align-items:center}
++.track img{width:56px;height:56px;border-radius:6px;object-fit:cover;background:var(--line);flex:none}
++.track div{min-width:0}
++.title{font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
++.artist{color:var(--muted);font-size:14px}
++ul{list-style:none;margin:0;padding:0;display:grid}
++li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
++li a{flex:1;color:var(--fg);text-decoration:none;font-weight:500}
++li a:hover{text-decoration:underline}
++.tag{font:11px var(--mono);letter-spacing:.04em;color:var(--muted)}
++.tag.exact{color:var(--ok)}
++.alts{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
++.alts button{background:none;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--fg)}
++textarea{width:100%;font:12px/1.5 var(--mono);padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);resize:vertical}
++.share{width:100%;padding:12px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:600}
+diff --git a/src/test/setup.ts b/src/test/setup.ts
+new file mode 100644
+index 0000000..0b8c101
+--- /dev/null
++++ b/src/test/setup.ts
+@@ -0,0 +1,21 @@
++import '@testing-library/jest-dom/vitest'
++import { cleanup } from '@testing-library/react'
++import { afterEach, vi } from 'vitest'
++import { resetSystemTheme } from './systemTheme'
++
++// Each test starts from a clean page: no rendered tree, no stored values,
++// no theme attribute on <html>, and the system theme reset to light.
++resetSystemTheme()
++
++afterEach(() => {
++  cleanup()
++  vi.restoreAllMocks()
++  vi.unstubAllGlobals()
++  try {
++    localStorage.clear()
++  } catch {
++    // storage may have been stubbed to throw; restoreAllMocks undoes that
++  }
++  document.documentElement.removeAttribute('data-theme')
++  resetSystemTheme()
++})
+diff --git a/src/test/storage.ts b/src/test/storage.ts
+new file mode 100644
+index 0000000..915fb77
+--- /dev/null
++++ b/src/test/storage.ts
+@@ -0,0 +1,12 @@
++import { vi } from 'vitest'
++
++// Makes every localStorage call throw, as Safari private mode and blocked
++// site data do. Undone by vi.restoreAllMocks() in setup.ts.
++export function makeStorageThrow(): void {
++  const fail = () => {
++    throw new DOMException('storage blocked', 'SecurityError')
++  }
++  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(fail)
++  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(fail)
++  vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(fail)
++}
+diff --git a/src/test/systemTheme.ts b/src/test/systemTheme.ts
+new file mode 100644
+index 0000000..d21dfea
+--- /dev/null
++++ b/src/test/systemTheme.ts
+@@ -0,0 +1,28 @@
++// jsdom has no matchMedia. These helpers stand in for the OS colour-scheme
++// setting so tests can say which theme the system prefers.
++type SystemTheme = 'light' | 'dark'
++
++const DARK_QUERY = /prefers-color-scheme:\s*dark/
++const LIGHT_QUERY = /prefers-color-scheme:\s*light/
++
++export function mockSystemTheme(theme: SystemTheme): void {
++  const matchMedia = (query: string): MediaQueryList => ({
++    matches: theme === 'dark' ? DARK_QUERY.test(query) : LIGHT_QUERY.test(query),
++    media: query,
++    onchange: null,
++    addListener: () => {},
++    removeListener: () => {},
++    addEventListener: () => {},
++    removeEventListener: () => {},
++    dispatchEvent: () => false,
++  })
++  Object.defineProperty(window, 'matchMedia', {
++    configurable: true,
++    writable: true,
++    value: matchMedia,
++  })
++}
++
++export function resetSystemTheme(): void {
++  mockSystemTheme('light')
++}
+diff --git a/tsconfig.json b/tsconfig.json
+new file mode 100644
+index 0000000..21dbefc
+--- /dev/null
++++ b/tsconfig.json
+@@ -0,0 +1,19 @@
++{
++  "compilerOptions": {
++    "target": "ES2022",
++    "lib": ["ES2022", "DOM", "DOM.Iterable"],
++    "module": "ESNext",
++    "moduleResolution": "bundler",
++    "jsx": "react-jsx",
++    "types": ["vite/client", "node"],
++    "strict": true,
++    "noEmit": true,
++    "isolatedModules": true,
++    "verbatimModuleSyntax": true,
++    "skipLibCheck": true,
++    "noUnusedLocals": true,
++    "noUnusedParameters": true,
++    "noFallthroughCasesInSwitch": true
++  },
++  "include": ["src", "vite.config.ts"]
++}
+diff --git a/vite.config.ts b/vite.config.ts
+new file mode 100644
+index 0000000..92042f4
+--- /dev/null
++++ b/vite.config.ts
+@@ -0,0 +1,12 @@
++import react from '@vitejs/plugin-react'
++import { defineConfig } from 'vitest/config'
++
++export default defineConfig({
++  base: '/crossplay/',
++  plugins: [react()],
++  server: { port: 5173, strictPort: true },
++  test: {
++    environment: 'jsdom',
++    setupFiles: ['src/test/setup.ts'],
++  },
++})

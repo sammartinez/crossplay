@@ -1,0 +1,61 @@
+### T2 · Pure link, share and response-mapping modules
+- complexity: medium
+- sets_pattern: true
+- assignee: engineer
+- depends_on: [T1]
+- covers: [AC5, AC6, AC7, AC8, AC15]
+- interface:
+  - `src/lib/types.ts`:
+    - `Platform = 'apple'|'spotify'|'ytm'`
+    - `ParsedLink = { src:'spotify'|'apple'; kind?:'track'|'album'; id?:string; slug?:string; link:string }`
+    - `Lookup = { title?:string; artist?:string; art?:string; links:Partial<Record<Platform,string>>; alts?:AppleAlt[] }`
+    - `AppleAlt = { title:string; artist:string; url:string }`
+    - `Conversion = Lookup & { links:Record<Platform,string>; exact:Record<Platform,boolean> }`
+    - minimal response types for Odesli, iTunes and oEmbed: only the fields that are read.
+  - `src/lib/links.ts`:
+    - `parseLink(raw: string): ParsedLink|null`
+    - `canonicalSpotifyLink(kind, id): string`
+    - `searchUrl(platform: Platform, query: string): string`
+    - `withSearchFallbacks(lookup: Lookup): Conversion`
+  - `src/lib/share.ts`: `shareText(c: Pick<Conversion,'title'|'artist'|'links'>): string`
+  - `src/lib/text.ts`: `titleCase(s?: string): string`
+  - `src/lib/lookup.ts`:
+    - `odesliUrl(link)`, `fromOdesli(body): Lookup`
+    - `itunesLookupUrl(p: ParsedLink)`, `fromItunesLookup(body|null, p): Lookup`
+    - `spotifyOembedUrl(link)`, `resolveSpotifyShortLink(oembed): ParsedLink|null`
+    - `itunesSearchUrl(title, kind?)`, `fromSpotifyFallback(oembed, itunesBody|null, p): Lookup`
+- notes:
+  - Port the logic from the old `index.html` script exactly; the old script is the reference.
+  - Constants to add:
+    - `PLATFORMS` (key and display name)
+    - `SPOTIFY_HOST_RE`, `SPOTIFY_SHORT_HOST`, `SPOTIFY_ORIGIN`, `SPOTIFY_EMBED_RE`
+    - `APPLE_MUSIC_HOST`, `APPLE_SONG_PARAM`
+    - `SEARCH_URL_BASES`
+    - `ODESLI_API_URL`, `ODESLI_COUNTRY`
+    - `ITUNES_LOOKUP_URL`, `ITUNES_SEARCH_URL`, `ITUNES_COUNTRY`, `ITUNES_SEARCH_LIMIT = 5`
+    - `ARTWORK_SIZE_SMALL` and `ARTWORK_SIZE_LARGE`
+    - `ITUNES_HOST`, `ITUNES_TRACKING_PARAM`
+    - `SHARE_LABELS`, `TITLE_ARTIST_SEPARATOR`
+  - `resolveSpotifyShortLink` reuses `canonicalSpotifyLink`. The album-vs-song entity choice is written once.
+  - Tests use JSON fixtures shaped like real responses. There is no mocking, because these functions are pure.
+
+## Acceptance criteria covered
+
+- AC5 (`parseLink`): `src/lib/links.ts` exports `parseLink(raw)`, with the same behavior as today:
+  - The input is trimmed, and invalid URLs return `null`.
+  - Spotify track and album links become a canonical `https://open.spotify.com/<kind>/<id>` link. Locale segments and the query string are dropped.
+  - `spotify.link` short links come back as `{src:'spotify', link}`, with no kind or id.
+  - Other Spotify paths return `null`.
+  - Apple song links (`?i=` or `/song/`) give `kind:'track'`. Album links give `kind:'album'`.
+  - The Apple `id` is the `i` param, otherwise the last path segment. The `slug` is the second-to-last segment with hyphens replaced by spaces. The `link` is origin + pathname, plus `?i=` only when it was present.
+  - Other hosts return `null`.
+- AC6 (search links): `searchUrl(platform, query)` returns the existing search URL for Spotify, Apple Music or YouTube Music, with the query URI-encoded. `withSearchFallbacks(lookup)` returns a new object without mutating its input:
+  - `links` has all three platforms filled, using a search URL for `"title artist"` wherever a link is missing.
+  - `exact[platform]` is `true` exactly when a link was given.
+- AC7 (share text): `shareText({title, artist, links})` returns `"<title> — <artist>\n\nApple Music: …\nSpotify: …\nYouTube Music: …"`. When the artist is empty, the first line is the title alone.
+- AC8 (response mapping): pure functions in `src/lib/lookup.ts` build each request URL and map each response:
+  - Odesli: missing fields give `undefined`, and mapping never throws.
+  - iTunes lookup: the title falls back from track name to collection name to the title-cased slug, artwork is upsized from 100x100 to 300x300, and a `null` body is handled.
+  - Spotify short link: the resolver reads the oEmbed `iframe_url`, falling back to `html`, and returns `null` when no track/album embed is found.
+  - Spotify fallback: alternate Apple matches have their URLs rewritten from `itunes.apple.com` to `music.apple.com` and stripped of `&uo=`. The first alt supplies the artist and the Apple link, and an empty result is handled.
+- AC15 (standards): every non-exempt literal lives in `src/constants.ts`, including JSX text, labels, messages, URLs, regexes, timeouts and keys. Modules in `src/lib/` other than `api.ts`, `clipboard.ts` and `theme.ts` are pure, with no DOM or network access. (`theme.ts` added in MR-001: `applyTheme` writes `<html>` and `localStorage` by design.)
