@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import ThemeToggle from './ThemeToggle'
-import { mockSystemTheme } from '../test/systemTheme'
-import { makeStorageThrow } from '../test/storage'
+import ThemeToggle from '../../src/components/ThemeToggle'
+import { mockSystemTheme } from '../support/systemTheme'
+import { makeStorageThrow } from '../support/storage'
 
 const KEY = 'cp-theme'
 const html = () => document.documentElement

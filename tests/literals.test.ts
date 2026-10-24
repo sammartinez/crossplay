@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import * as constants from './constants'
+import * as constants from '../src/constants'
 
 // AC15: user-facing text lives in src/constants.ts, not in components.
 // npm test runs vitest from the repo root.

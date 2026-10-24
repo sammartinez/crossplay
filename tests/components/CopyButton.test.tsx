@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import CopyButton from './CopyButton'
+import CopyButton from '../../src/components/CopyButton'
 import {
   FALLBACK_LABEL,
   RESET_MS,
@@ -9,7 +9,7 @@ import {
   clickAndSettle,
   stubClipboard,
   stubExecCommand,
-} from '../test/clipboard'
+} from '../support/clipboard'
 
 // AC13: the button copies its text, reads "Copied" or "Copy it below", then
 // goes back to its label after 1.4 s.

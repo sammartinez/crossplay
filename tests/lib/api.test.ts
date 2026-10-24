@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { jsonp, lookupLink } from './api'
-import { withSearchFallbacks } from './links'
+import { jsonp, lookupLink } from '../../src/lib/api'
+import { withSearchFallbacks } from '../../src/lib/links'
 import {
   fromItunesLookup,
   fromOdesli,
@@ -9,16 +9,16 @@ import {
   itunesSearchUrl,
   odesliUrl,
   spotifyOembedUrl,
-} from './lookup'
-import type { ParsedLink } from './types'
-import { fixture } from '../test/fixtures'
+} from '../../src/lib/lookup'
+import type { ParsedLink } from '../../src/lib/types'
+import { fixture } from '../support/fixtures'
 import {
   fetchedUrls,
   jsonResponse,
   jsonpScriptsInDocument,
   mockFetch,
   mockJsonp,
-} from '../test/network'
+} from '../support/network'
 
 // AC9: lookupLink tries Odesli, falls back by source, fills search links,
 // and JSONP times out after 8 s and always cleans up.
