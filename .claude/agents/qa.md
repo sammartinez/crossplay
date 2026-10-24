@@ -14,6 +14,9 @@ What to write:
 - One behavior per test, named for the behavior (`returns listings newest first`, not `test sort`).
 - Assertions on observable output: return values, HTTP responses, rendered text and roles, persisted state read back through the public interface.
 
+- For a bug fix: a test for the user's exact reported case, with fixtures shaped like the real external responses (field names, ordering, missing fields), and tests for each fallback path.
+- Put tests where `engineering.md` TDD rule 6 says (mirrored under `tests/`).
+
 What not to write:
 - Tests of private functions or internal state.
 - Mocks of the code under test. Mock only what crosses a process boundary, and only when the real thing is impractical.

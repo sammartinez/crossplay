@@ -37,7 +37,9 @@ After every state change below, update `.team/data.js` (see [state.md](state.md)
    - Write `.team/config.json` by detecting the stack (see [config.md](config.md)). Show the user the detected commands and ask them to confirm or correct before going further. This is a one-time question.
    - If the repo has a UI but no way to serve it, say so in the same question and offer to add a dev server. On yes, add the framework's standard minimal setup (see [config.md](config.md)), check that `previewUrl` responds and renders without console errors, run the gates, and commit it on `baseBranch` as `eng-team: add dev server`. On no, set `commands.preview` to `null`.
    - Commit: `eng-team: initialize .team/`.
-3. Read `.team/config.json`. If `$ARGUMENTS` is a path to a file, read it as the spec; otherwise the arguments are the spec text.
+3. Read `.team/config.json`. Check that `baseBranch` exists and matches its remote (`git fetch origin <baseBranch>`; compare with `origin/<baseBranch>`). If it's missing or behind, don't silently branch from a stale tip: ask the user which branch to build on and fix `baseBranch`. If you were started on a detached HEAD or a session branch, ask where the result should land (local merge, or a pushed branch + PR).
+4. If `$ARGUMENTS` is a path to a file, read it as the spec; otherwise the arguments are the spec text.
+5. **Bug reports.** If the spec reports a bug, before the Principal plans: find the input that reproduces it (the user's link, payload, or steps), read the code path it takes, and write the suspected root cause into the spec. Note whether the external services involved are reachable from this environment; if not, say so in the spec so QA builds fixtures shaped like the real responses, and tell the user live verification wasn't possible. Ask the user any product decision the fix forces (e.g. what to show when data can't be known) at this point, not after the plan.
 
 If `$ARGUMENTS` starts with `--small`, go to **Small-change path**. Otherwise continue.
 
@@ -56,7 +58,7 @@ Let `MR-NNN` be the task's MR, `D = .team/mrs/MR-NNN/`.
 
 **b. QA writes failing tests.** Status → `tests`. Spawn `qa` with the plan path, `D/task.md`, and the MR ID. Then gate it yourself:
 - Every file changed in QA's commit matches `testPaths`. If not, send QA back with the list.
-- Run the test command. It must **fail**, and the failures must be the new tests. Save the command, exit code, and failing test names to `D/gates.md` under `## Red (after QA)`.
+- Run the test command. It must **fail**, and the failures must be the new tests. Exception: a red state the approved plan names for that task (e.g. a pure test move that fails to load until config changes); record it as such. Save the command, exit code, and failing test names to `D/gates.md` under `## Red (after QA)`.
 - Record QA's commit SHA in `gates.md` as `qa_commit`.
 
 Status → `implementing`.
@@ -70,8 +72,8 @@ Status → `implementing`.
 
 **d2. Preview (UI tasks).** If the task has `preview` paths and `commands.preview` is set:
 1. Start `commands.preview` in the background and wait until `previewUrl` responds (give up after 60 s and note it in `gates.md`).
-2. For each path, screenshot it: `npx -y playwright screenshot --full-page --wait-for-timeout 1000 <previewUrl><path> D/screens/<slug>.png` (first time on this machine: `npx -y playwright install chromium`). Capture light and, if the app supports it, `--color-scheme dark`.
-3. Stop the server. Record the files in `data.js` as `screens` (paths relative to `.team/`, e.g. `mrs/MR-003/screens/home.png`).
+2. For each path, screenshot it. If the screen that matters only appears after an external request (a lookup result, a fallback), drive it with a short Playwright script that routes those requests to QA's fixtures, rather than screenshotting only the empty page. Otherwise: `npx -y playwright screenshot --full-page --wait-for-timeout 1000 <previewUrl><path> D/screens/<slug>.png` (first time on this machine: `npx -y playwright install chromium`). Capture light and, if the app supports it, `--color-scheme dark`.
+3. Stop the server by the PID you saved when starting it. `npm run` wraps the real server in child processes, so start it with `setsid` and stop the whole group (`kill -- -<pid>`), then confirm `previewUrl` no longer responds. Never `pkill -f <pattern>`: the pattern also matches your own shell command and kills it mid-step. Write `gates.md` and `diff.patch` in a separate command from starting or stopping servers, and check they exist before spawning the reviewer. Record the files in `data.js` as `screens` (paths relative to `.team/`, e.g. `mrs/MR-003/screens/home.png`).
 4. If screenshots fail, continue without them, and note why in `gates.md`. Previews never block an MR.
 
 Re-capture after every round that changes code.
@@ -103,7 +105,7 @@ Re-capture after every round that changes code.
 When every MR is merged into `team/PLAN-NNN`:
 1. Run all gates on `team/PLAN-NNN`. If previews are on, screenshot every `preview` path from the plan into `.team/plans/PLAN-NNN/screens/` and add them to the plan's `screens` in `data.js`. Then start `commands.preview` in the background and leave it running so the user can try the result at `previewUrl` before deciding.
 2. Tell the user, briefly: where to try it (`previewUrl`, and the screenshots on the dashboard), MRs merged, review rounds per MR (first and second pass), anything escalated, any Principal-authored MR (flag these for their eyes), and `git diff <baseBranch>...team/PLAN-NNN --stat`.
-3. Ask whether to merge `team/PLAN-NNN` into `baseBranch`. Stop the preview server once they've answered. Only merge on an explicit yes. Plan status → `done`, then commit the `.team/` record on `baseBranch`: `eng-team: record PLAN-NNN`.
+3. Ask whether to merge `team/PLAN-NNN` into `baseBranch` (or, if the user chose a pushed branch + PR at setup, whether to push and open the PR). Stop the preview server once they've answered. Only merge on an explicit yes. Plan status → `done`, then commit the `.team/` record on `baseBranch`: `eng-team: record PLAN-NNN`.
 
 ---
 
@@ -145,5 +147,7 @@ Nobody reviews their own work.
 - Never edit product code or tests yourself, and never soften a review. If something is stuck, escalate.
 - Keep commits on MR branches; never commit to `baseBranch` except `.team/` setup, the user-approved final merge, and the `.team/` record after it.
 - Don't commit `.team/` during a run. It stays as working-tree changes so it survives branch switches and the dashboard never shows a stale state. It's committed once, after the final merge.
+- If a subagent stops mid-task (rate limit, API error), resume it with SendMessage instead of re-spawning; it keeps its context. Re-spawn only if resuming fails.
+- Push MR and integration branches when the session may be reclaimed (cloud sessions); that's not a merge and doesn't break the "no commits to baseBranch" rule. `.team/` still stays uncommitted until the end.
 - If a subagent returns something unusable (no commits, wrong files, malformed review), retry it once with the problem stated; then escalate.
 - Tell the user only at checkpoints, escalations, and the end. Otherwise keep going; the dashboard shows progress. Mention once at the start: open `.team/dashboard.html` to watch.
