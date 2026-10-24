@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import ResultCard from './ResultCard'
-import { withSearchFallbacks } from '../lib/links'
-import type { AppleAlt } from '../lib/types'
+import ResultCard from '../../src/components/ResultCard'
+import { withSearchFallbacks } from '../../src/lib/links'
+import type { AppleAlt } from '../../src/lib/types'
 import {
   FALLBACK_LABEL,
   RESET_MS,
@@ -12,8 +12,8 @@ import {
   selectedText,
   stubClipboard,
   stubExecCommand,
-} from '../test/clipboard'
-import { expectNotShown, isShown, resultRow as row } from '../test/dom'
+} from '../support/clipboard'
+import { expectNotShown, isShown, resultRow as row } from '../support/dom'
 
 // AC11 (result card), AC12 (alternates) and AC13 (copy and share), from a
 // Conversion prop.

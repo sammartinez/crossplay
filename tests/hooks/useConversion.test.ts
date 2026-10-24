@@ -1,11 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { useConversion } from './useConversion'
-import { withSearchFallbacks } from '../lib/links'
-import { SPOTIFY_OEMBED_URL } from '../constants'
-import { fromOdesli, fromSpotifyFallback, odesliUrl } from '../lib/lookup'
-import type { ParsedLink } from '../lib/types'
-import { fixture } from '../test/fixtures'
+import { useConversion } from '../../src/hooks/useConversion'
+import { withSearchFallbacks } from '../../src/lib/links'
+import { SPOTIFY_OEMBED_URL } from '../../src/constants'
+import { fromOdesli, fromSpotifyFallback, odesliUrl } from '../../src/lib/lookup'
+import type { ParsedLink } from '../../src/lib/types'
+import { fixture } from '../support/fixtures'
 import {
   type Deferred,
   deferred,
@@ -14,7 +14,7 @@ import {
   jsonpScriptsInDocument,
   mockFetch,
   mockJsonp,
-} from '../test/network'
+} from '../support/network'
 
 // AC10 (conversion state) and AC12 (choosing an alternate Apple match).
 // The task interface names the result `conversion` and adds `isError`.

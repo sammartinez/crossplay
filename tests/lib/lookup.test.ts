@@ -8,9 +8,9 @@ import {
   odesliUrl,
   resolveSpotifyShortLink,
   spotifyOembedUrl,
-} from './lookup'
-import type { ParsedLink } from './types'
-import { fixture } from '../test/fixtures'
+} from '../../src/lib/lookup'
+import type { ParsedLink } from '../../src/lib/types'
+import { fixture } from '../support/fixtures'
 
 const SPOTIFY_TRACK: ParsedLink = {
   src: 'spotify',

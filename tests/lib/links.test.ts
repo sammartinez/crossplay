@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { canonicalSpotifyLink, parseLink, searchUrl, withSearchFallbacks } from './links'
-import type { Lookup } from './types'
+import { canonicalSpotifyLink, parseLink, searchUrl, withSearchFallbacks } from '../../src/lib/links'
+import type { Lookup } from '../../src/lib/types'
 
 const TRACK_ID = '4u7EnebtmKWzUH433cf5Qv'
 const ALBUM_ID = '1GbtB4zTqAsyfZEsm1RZfx'

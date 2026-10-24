@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { applyTheme, nextTheme, readStoredTheme } from './theme'
-import { makeStorageThrow } from '../test/storage'
+import { applyTheme, nextTheme, readStoredTheme } from '../../src/lib/theme'
+import { makeStorageThrow } from '../support/storage'
 
 const KEY = 'cp-theme'
 

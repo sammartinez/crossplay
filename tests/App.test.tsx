@@ -1,13 +1,13 @@
 import { StrictMode } from 'react'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import App from './App'
-import { SPOTIFY_OEMBED_URL } from './constants'
-import { odesliUrl } from './lib/lookup'
-import { fixture } from './test/fixtures'
-import { type Deferred, deferred, jsonResponse, mockFetch, mockJsonp } from './test/network'
-import { expectedShareText, stubClipboard } from './test/clipboard'
-import { expectNotShown, resultRow as row } from './test/dom'
+import App from '../src/App'
+import { SPOTIFY_OEMBED_URL } from '../src/constants'
+import { odesliUrl } from '../src/lib/lookup'
+import { fixture } from './support/fixtures'
+import { type Deferred, deferred, jsonResponse, mockFetch, mockJsonp } from './support/network'
+import { expectedShareText, stubClipboard } from './support/clipboard'
+import { expectNotShown, resultRow as row } from './support/dom'
 
 // AC11 (convert UI), AC12 (alternates) and AC13 (copy and share), driven through App's rendered
 // output with only fetch and the JSONP script load stood in.
