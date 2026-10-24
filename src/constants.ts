@@ -1,0 +1,10 @@
+export const APP_NAME = 'Crossplay'
+export const APP_SUBTITLE = 'Paste a Spotify or Apple Music link. Get it everywhere.'
+export const APP_ROOT_ID = 'app'
+
+export const THEME_LIGHT = 'light'
+export const THEME_DARK = 'dark'
+export const THEME_STORAGE_KEY = 'cp-theme'
+export const THEME_ATTRIBUTE = 'data-theme'
+export const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
+export const THEME_TOGGLE_LABEL = 'Theme'
