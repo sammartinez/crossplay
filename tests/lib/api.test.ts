@@ -667,8 +667,16 @@ describe('lookupLink Odesli hop', () => {
     })
   })
 
-  describe('when the hop response disagrees with the first', () => {
+  // PLAN-003 AC3 (amended): a hop for a different song fills nothing.
+  describe('when the hop response is for a different song', () => {
     const mismatch = () => reportedCase(answer('odesli-ytm-dirt-mismatch.json'))
+
+    it('makes no further request after the hop', async () => {
+      const { fetchMock, loads } = mismatch()
+      await lookupLink(DIRT)
+      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), HOP_URL])
+      expect(loads).toHaveLength(0)
+    })
 
     it("keeps the first response's Apple Music and YouTube Music links", async () => {
       mismatch()
@@ -685,11 +693,113 @@ describe('lookupLink Odesli hop', () => {
       expect(conversion?.art).toBe(DIRT_ART)
     })
 
-    it('fills only the Spotify link the first response lacked', async () => {
+    it("does not use the other song's Spotify link; links Spotify to a search, not tagged exact", async () => {
       mismatch()
       const { conversion } = await lookupLink(DIRT)
-      expect(conversion?.links.spotify).toBe('https://open.spotify.com/track/0PlaceholderDirtLive00')
-      expect(conversion?.exact).toEqual({ apple: true, spotify: true, ytm: true })
+      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY_SEARCH)
+      expect(conversion?.exact).toEqual({ apple: true, spotify: false, ytm: true })
+    })
+
+    it('returns the first response with search fallbacks', async () => {
+      mismatch()
+      const { conversion } = await lookupLink(DIRT)
+      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-apple-dirt.json'))))
+    })
+  })
+
+  // A hop body for the same song as odesli-ytm-dirt.json, with every entity's
+  // title and/or artist replaced.
+  function ytmDirtWith({ title, artistName }: { title?: string; artistName?: string }) {
+    const body = fixture<{ entitiesByUniqueId: Record<string, object> }>('odesli-ytm-dirt.json')
+    const entitiesByUniqueId = Object.fromEntries(
+      Object.entries(body.entitiesByUniqueId).map(([id, entity]) => [
+        id,
+        { ...entity, ...(title !== undefined && { title }), ...(artistName !== undefined && { artistName }) },
+      ]),
+    )
+    return { ...body, entitiesByUniqueId }
+  }
+
+  describe('matching the hop song to the first', () => {
+    it.each(['DIRT', 'dirt', 'Dirt.', '  Dirt  '])(
+      'links Spotify exactly when the hop title is "%s"',
+      async (title) => {
+        reportedCase(answerBody(ytmDirtWith({ title })))
+        const { conversion } = await lookupLink(DIRT)
+        expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY)
+        expect(conversion?.exact.spotify).toBe(true)
+      },
+    )
+
+    it('links Spotify exactly when the hop artist differs only by case, punctuation and spacing', async () => {
+      reportedCase(answerBody(ytmDirtWith({ artistName: 'PLACEHOLDER   artist.' })))
+      const { conversion } = await lookupLink(DIRT)
+      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY)
+      expect(conversion?.exact.spotify).toBe(true)
+    })
+
+    it('links Spotify to a search when the hop title is "Dirt (Live)"', async () => {
+      reportedCase(answerBody(ytmDirtWith({ title: 'Dirt (Live)' })))
+      const { conversion } = await lookupLink(DIRT)
+      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY_SEARCH)
+      expect(conversion?.exact.spotify).toBe(false)
+    })
+
+    it('links Spotify to a search when the hop has the same title by another artist', async () => {
+      reportedCase(answerBody(ytmDirtWith({ artistName: 'Some Other Artist' })))
+      const { conversion } = await lookupLink(DIRT)
+      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY_SEARCH)
+      expect(conversion?.exact.spotify).toBe(false)
+    })
+
+    it('links Spotify exactly when the hop has the same title and no artist', async () => {
+      reportedCase(answerBody(ytmDirtWith({ artistName: '' })))
+      const { conversion } = await lookupLink(DIRT)
+      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY)
+      expect(conversion?.exact.spotify).toBe(true)
+    })
+
+    it('links Spotify to a search when the hop response has no entity', async () => {
+      const noEntity = {
+        ...fixture<object>('odesli-ytm-dirt.json'),
+        entityUniqueId: undefined,
+        entitiesByUniqueId: undefined,
+      }
+      const { fetchMock } = reportedCase(answerBody(noEntity))
+      const { conversion } = await lookupLink(DIRT)
+      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), HOP_URL])
+      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-apple-dirt.json'))))
+    })
+  })
+
+  // PLAN-003 AC3 (amended): a malformed 200 body never makes lookupLink reject.
+  describe('malformed Odesli bodies', () => {
+    it('falls back to the iTunes lookup when the first Odesli body is null', async () => {
+      const { loads } = odesli(answerBody(null), answer('odesli-ytm-dirt.json'))
+      const { conversion } = await lookupLink(DIRT)
+      expect(loads.map((l) => l.src.startsWith(itunesLookupUrl(DIRT)))).toEqual([true])
+      expect(conversion).toEqual(
+        withSearchFallbacks(fromItunesLookup(fixture('itunes-lookup-song.json'), DIRT)),
+      )
+    })
+
+    it('makes no hop request when the first Odesli body is null', async () => {
+      const { fetchMock } = odesli(answerBody(null), answer('odesli-ytm-dirt.json'))
+      await lookupLink(DIRT)
+      expect(fetchedUrls(fetchMock)).not.toContain(HOP_URL)
+    })
+
+    it('makes exactly two requests when the hop body is null', async () => {
+      const { fetchMock, loads } = reportedCase(answerBody(null))
+      await lookupLink(DIRT)
+      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), HOP_URL])
+      expect(loads).toHaveLength(0)
+    })
+
+    it('returns the first response with search fallbacks when the hop body is null', async () => {
+      reportedCase(answerBody(null))
+      const { conversion } = await lookupLink(DIRT)
+      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-apple-dirt.json'))))
     })
   })
 
@@ -762,6 +872,13 @@ describe('lookupLink Odesli hop', () => {
       const { conversion } = await lookupLink(DIRT_FROM_SPOTIFY)
       expect(conversion?.links.apple).toBe(DIRT_APPLE_SEARCH)
       expect(conversion?.exact.apple).toBe(false)
+    })
+    it('links Apple Music to a search, not tagged exact, when the hop is for a different song', async () => {
+      const { fetchMock } = spotifyCase(answer('odesli-ytm-dirt-mismatch.json'))
+      const { conversion } = await lookupLink(DIRT_FROM_SPOTIFY)
+      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT_FROM_SPOTIFY.link), HOP_URL])
+      expect(conversion?.links.apple).toBe(DIRT_APPLE_SEARCH)
+      expect(conversion?.exact).toEqual({ apple: false, spotify: true, ytm: true })
     })
   })
 

@@ -506,18 +506,100 @@ describe('withHopLinks', () => {
     expect(merged.links).toEqual({ apple: DIRT_APPLE, spotify: DIRT_SPOTIFY, ytm: DIRT_YTM })
   })
 
-  it('keeps the first Apple Music and YouTube Music links when the hop has different ones', () => {
-    const merged = withHopLinks(first(), fromOdesli(fixture('odesli-ytm-dirt-mismatch.json')))
-    expect(merged.links.apple).toBe(DIRT_APPLE)
-    expect(merged.links.ytm).toBe(DIRT_YTM)
-    expect(merged.links.spotify).toBe('https://open.spotify.com/track/0PlaceholderDirtLive00')
+  // A hop Lookup for the same song as first(), with its own links and art.
+  const sameSongHop = (over: Partial<Lookup> = {}): Lookup => ({
+    title: 'Dirt',
+    artist: 'Placeholder Artist',
+    art: 'https://i.scdn.co/image/ab67616d0000b273placeholderdirt000000000',
+    links: {
+      apple: 'https://geo.music.apple.com/us/album/_/6899999990?i=6899999991',
+      spotify: DIRT_SPOTIFY,
+      ytm: 'https://music.youtube.com/watch?v=PLCHLDRother',
+    },
+    ...over,
   })
 
-  it("keeps the first lookup's title, artist and art when the hop's differ", () => {
+  it('keeps the first Apple Music and YouTube Music links when the hop has different ones', () => {
+    const merged = withHopLinks(first(), sameSongHop())
+    expect(merged.links).toEqual({ apple: DIRT_APPLE, spotify: DIRT_SPOTIFY, ytm: DIRT_YTM })
+  })
+
+  it("keeps the first lookup's title, artist and art when the hop's differ in case and art", () => {
+    const merged = withHopLinks(first(), sameSongHop({ title: 'DIRT', artist: 'placeholder artist' }))
+    expect(merged.title).toBe('Dirt')
+    expect(merged.artist).toBe('Placeholder Artist')
+    expect(merged.art).toBe(DIRT_ART)
+  })
+
+  // PLAN-003 AC3 (amended): the hop fills links only for the same song.
+  it('fills nothing from a hop for a different song (odesli-ytm-dirt-mismatch.json)', () => {
+    const merged = withHopLinks(first(), fromOdesli(fixture('odesli-ytm-dirt-mismatch.json')))
+    expect(merged).toEqual(first())
+  })
+
+  it("keeps the first lookup's title, artist and art when the hop is for a different song", () => {
     const merged = withHopLinks(first(), fromOdesli(fixture('odesli-ytm-dirt-mismatch.json')))
     expect(merged.title).toBe('Dirt')
     expect(merged.artist).toBe('Placeholder Artist')
     expect(merged.art).toBe(DIRT_ART)
+  })
+
+  it('fills nothing when the hop title differs, even with the same artist', () => {
+    const merged = withHopLinks(first(), sameSongHop({ title: 'Dirt (Live)' }))
+    expect(merged).toEqual(first())
+  })
+
+  it('fills nothing when both artists are given and differ, even with the same title', () => {
+    const merged = withHopLinks(first(), sameSongHop({ artist: 'Some Other Artist' }))
+    expect(merged).toEqual(first())
+  })
+
+  it.each([
+    ['upper case', 'DIRT'],
+    ['lower case', 'dirt'],
+    ['punctuation', 'Dirt!'],
+    ['surrounding whitespace', '  Dirt  '],
+  ])('fills the missing link when the hop title differs only by %s', (_, title) => {
+    const merged = withHopLinks(first(), sameSongHop({ title }))
+    expect(merged.links.spotify).toBe(DIRT_SPOTIFY)
+  })
+
+  it('fills the missing link when the hop artist differs only by case, punctuation and repeated spaces', () => {
+    const merged = withHopLinks(first(), sameSongHop({ artist: 'PLACEHOLDER   artist.' }))
+    expect(merged.links.spotify).toBe(DIRT_SPOTIFY)
+  })
+
+  it("matches \"Ain't\" in the first title with \"Aint\" in the hop's", () => {
+    const aint: Lookup = { title: "Ain't Gettin' High", artist: 'Placeholder Artist', links: {} }
+    const merged = withHopLinks(aint, sameSongHop({ title: 'Aint Gettin High' }))
+    expect(merged.links.spotify).toBe(DIRT_SPOTIFY)
+  })
+
+  it('compares titles only when the first lookup has no artist', () => {
+    const merged = withHopLinks({ ...first(), artist: '' }, sameSongHop({ artist: 'Some Other Artist' }))
+    expect(merged.links.spotify).toBe(DIRT_SPOTIFY)
+  })
+
+  it('compares titles only when the hop has no artist', () => {
+    const merged = withHopLinks(first(), sameSongHop({ artist: '' }))
+    expect(merged.links.spotify).toBe(DIRT_SPOTIFY)
+  })
+
+  it('fills nothing from a hop with no entity', () => {
+    const noEntity = { ...fixture<OdesliResponse>('odesli-ytm-dirt.json'), entityUniqueId: undefined }
+    const merged = withHopLinks(first(), fromOdesli(noEntity))
+    expect(merged).toEqual(first())
+  })
+
+  it('fills nothing from a hop with no title', () => {
+    const merged = withHopLinks(first(), sameSongHop({ title: undefined }))
+    expect(merged).toEqual(first())
+  })
+
+  it('fills no Apple Music link for a Spotify-source lookup from a hop for a different song', () => {
+    const spotifyFirst = fromOdesli(fixture('odesli-spotify-dirt-no-apple.json'))
+    const merged = withHopLinks(spotifyFirst, fromOdesli(fixture('odesli-ytm-dirt-mismatch.json')))
+    expect(merged).toEqual(spotifyFirst)
   })
 
   it('takes no title, artist or art from the hop even when the first lookup has none', () => {
