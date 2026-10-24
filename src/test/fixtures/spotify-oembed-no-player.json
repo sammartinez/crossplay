@@ -1,0 +1,7 @@
+{
+  "version": "1.0",
+  "provider_name": "Spotify",
+  "provider_url": "https://spotify.com",
+  "type": "rich",
+  "title": "Spotify"
+}

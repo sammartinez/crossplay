@@ -1,0 +1,53 @@
+{
+  "entityUniqueId": "SPOTIFY_SONG::4u7EnebtmKWzUH433cf5Qv",
+  "userCountry": "US",
+  "pageUrl": "https://song.link/s/4u7EnebtmKWzUH433cf5Qv",
+  "entitiesByUniqueId": {
+    "SPOTIFY_SONG::4u7EnebtmKWzUH433cf5Qv": {
+      "id": "4u7EnebtmKWzUH433cf5Qv",
+      "type": "song",
+      "title": "Bohemian Rhapsody - Remastered 2011",
+      "artistName": "Queen",
+      "thumbnailUrl": "https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a",
+      "thumbnailWidth": 640,
+      "thumbnailHeight": 640,
+      "apiProvider": "spotify",
+      "platforms": ["spotify"]
+    },
+    "ITUNES_SONG::1440806768": {
+      "id": "1440806768",
+      "type": "song",
+      "title": "Bohemian Rhapsody",
+      "artistName": "Queen",
+      "thumbnailUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b-9f7a-8f6d-0b0e-1d1c1b1a1f1e/source/512x512bb.jpg",
+      "thumbnailWidth": 512,
+      "thumbnailHeight": 512,
+      "apiProvider": "itunes",
+      "platforms": ["appleMusic", "itunes"]
+    }
+  },
+  "linksByPlatform": {
+    "appleMusic": {
+      "country": "US",
+      "url": "https://geo.music.apple.com/us/album/_/1440806041?i=1440806768&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m",
+      "nativeAppUriMobile": "music://music.apple.com/us/album/_/1440806041?i=1440806768&mt=1&app=music",
+      "entityUniqueId": "ITUNES_SONG::1440806768"
+    },
+    "spotify": {
+      "country": "US",
+      "url": "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv",
+      "nativeAppUriDesktop": "spotify:track:4u7EnebtmKWzUH433cf5Qv",
+      "entityUniqueId": "SPOTIFY_SONG::4u7EnebtmKWzUH433cf5Qv"
+    },
+    "youtube": {
+      "country": "US",
+      "url": "https://www.youtube.com/watch?v=fJ9rUzIMcZQ",
+      "entityUniqueId": "YOUTUBE_VIDEO::fJ9rUzIMcZQ"
+    },
+    "youtubeMusic": {
+      "country": "US",
+      "url": "https://music.youtube.com/watch?v=fJ9rUzIMcZQ",
+      "entityUniqueId": "YOUTUBE_VIDEO::fJ9rUzIMcZQ"
+    }
+  }
+}
