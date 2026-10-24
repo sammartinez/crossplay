@@ -23,6 +23,11 @@ const UI_TEXT = {
   TAG_SEARCH: 'SEARCH',
   WRONG_MATCH_LABEL: 'Wrong Apple match?',
   ALT_SEPARATOR: ' · ',
+  COPY_LABEL: 'Copy',
+  COPIED_LABEL: 'Copied',
+  COPY_MANUAL_LABEL: 'Copy it below',
+  SHARE_LABEL: 'Copy share text',
+  FALLBACK_TEXTAREA_LABEL: 'Text to copy',
 }
 
 describe('UI text constants', () => {
@@ -31,9 +36,17 @@ describe('UI text constants', () => {
   })
 })
 
+it('exports the 1.4 s copy label reset as COPY_RESET_MS', () => {
+  expect(constants.COPY_RESET_MS).toBe(1400)
+})
+
 describe.each(COMPONENT_FILES)('%s', (file) => {
   it('has no literal JSX text', () => {
     expect(source(file)).not.toMatch(JSX_TEXT)
+  })
+
+  it('does not inline the copy reset delay', () => {
+    expect(source(file)).not.toMatch(/\b1400\b/)
   })
 
   it.each(Object.values(UI_TEXT).filter((v) => v.trim()))('does not inline "%s"', (text) => {
@@ -41,8 +54,20 @@ describe.each(COMPONENT_FILES)('%s', (file) => {
   })
 })
 
-it('covers the convert form and result card', () => {
+it('covers the convert form, result card and copy button', () => {
   expect(COMPONENT_FILES).toEqual(
-    expect.arrayContaining(['src/components/ConvertForm.tsx', 'src/components/ResultCard.tsx']),
+    expect.arrayContaining([
+      'src/components/ConvertForm.tsx',
+      'src/components/ResultCard.tsx',
+      'src/components/CopyButton.tsx',
+    ]),
   )
+})
+
+it('keeps the copy reset delay and labels out of src/lib/clipboard.ts', () => {
+  const clipboard = source('src/lib/clipboard.ts')
+  expect(clipboard).not.toMatch(/\b1400\b/)
+  for (const text of ['Copied', 'Copy it below']) {
+    expect(clipboard).not.toContain(text)
+  }
 })

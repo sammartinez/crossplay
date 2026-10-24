@@ -6,9 +6,10 @@ import { SPOTIFY_OEMBED_URL } from './constants'
 import { odesliUrl } from './lib/lookup'
 import { fixture } from './test/fixtures'
 import { type Deferred, deferred, jsonResponse, mockFetch, mockJsonp } from './test/network'
+import { stubClipboard } from './test/clipboard'
 import { expectNotShown, resultRow as row } from './test/dom'
 
-// AC11 (convert UI) and AC12 (alternates), driven through App's rendered
+// AC11 (convert UI), AC12 (alternates) and AC13 (copy and share), driven through App's rendered
 // output with only fetch and the JSONP script load stood in.
 
 const PLACEHOLDER = 'https://open.spotify.com/track/…'
@@ -451,6 +452,39 @@ describe('App', () => {
       submit(SPOTIFY_TRACK_RAW)
       await waitForResult()
       expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('copy and share', () => {
+    it('copies the converted share text with "Copy share text"', async () => {
+      odesliTrack()
+      const writeText = stubClipboard('ok')
+      render(<App />)
+      submit(SPOTIFY_TRACK_RAW)
+      await waitForResult()
+      fireEvent.click(screen.getByRole('button', { name: 'Copy share text' }))
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(
+          [
+            `${ODESLI_TITLE} — Queen`,
+            '',
+            `Apple Music: ${ODESLI_LINKS['Apple Music']}`,
+            `Spotify: ${ODESLI_LINKS.Spotify}`,
+            `YouTube Music: ${ODESLI_LINKS['YouTube Music']}`,
+          ].join('\n'),
+        ),
+      )
+      expect(await screen.findByRole('button', { name: 'Copied' })).toHaveClass('share')
+    })
+
+    it('copies a row link with its Copy button', async () => {
+      odesliTrack()
+      const writeText = stubClipboard('ok')
+      render(<App />)
+      submit(SPOTIFY_TRACK_RAW)
+      await waitForResult()
+      fireEvent.click(within(row('YouTube Music')).getByRole('button', { name: 'Copy' }))
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(ODESLI_LINKS['YouTube Music']))
     })
   })
 })
