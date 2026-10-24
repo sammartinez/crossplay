@@ -203,7 +203,7 @@ function render() {
   const T = window.TEAM;
   const app = document.getElementById("app");
   if (!T) {
-    app.innerHTML = `<div class="emptystate"><h1>No team data yet</h1><p>Run <code>/eng-team:run &lt;spec&gt;</code> in Claude Code. This page reads <code>.team/data.js</code> next to it.</p></div>`;
+    app.innerHTML = `<div class="emptystate"><h1>No team data yet</h1><p>Run <code>/eng-team &lt;spec&gt;</code> in Claude Code. This page reads <code>.team/data.js</code> next to it.</p></div>`;
     return;
   }
   const mrs = T.mrs ?? [], plans = T.plans ?? [], events = T.events ?? [];
