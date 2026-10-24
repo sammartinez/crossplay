@@ -6,6 +6,30 @@ import { vi } from 'vitest'
 
 // 'ok' resolves, 'blocked' rejects as a denied permission does, 'missing'
 // leaves navigator.clipboard undefined as an insecure context does.
+// How long a copy button shows "Copied" or "Copy it below" (AC13: 1.4 s).
+// A literal on purpose, so the tests check the value rather than echo it.
+export const RESET_MS = 1400
+
+// The fallback textarea's accessible name.
+export const FALLBACK_LABEL = 'Text to copy'
+
+// The text the user would copy from a textarea right now.
+export const selectedText = (box: HTMLTextAreaElement): string =>
+  box.value.slice(box.selectionStart, box.selectionEnd)
+
+// The AC7 share text, written out so tests state the format themselves.
+export const expectedShareText = (
+  head: string,
+  links: { apple: string; spotify: string; ytm: string },
+): string =>
+  [
+    head,
+    '',
+    `Apple Music: ${links.apple}`,
+    `Spotify: ${links.spotify}`,
+    `YouTube Music: ${links.ytm}`,
+  ].join('\n')
+
 export type ClipboardOutcome = 'ok' | 'blocked' | 'missing'
 
 export function stubClipboard(outcome: ClipboardOutcome) {
@@ -35,7 +59,7 @@ export function stubExecCommand(outcome: ExecCommandOutcome) {
         : Array.from(document.querySelectorAll('textarea')).find(
             (el) => el.selectionEnd > el.selectionStart,
           )
-    selected.push(box ? box.value.slice(box.selectionStart, box.selectionEnd) : '')
+    selected.push(box ? selectedText(box) : '')
     if (outcome === 'throws') throw new Error('execCommand unsupported')
     return outcome === 'ok'
   })

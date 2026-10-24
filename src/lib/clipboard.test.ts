@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { copyText } from './clipboard'
-import { stubClipboard, stubExecCommand } from '../test/clipboard'
+import { selectedText, stubClipboard, stubExecCommand } from '../test/clipboard'
 
 // AC13: copy with navigator.clipboard, fall back to execCommand('copy') from
 // the textarea, and leave the text selected for a manual copy when both fail.
@@ -21,9 +21,6 @@ function fallbackBox(): HTMLTextAreaElement {
 afterEach(() => {
   boxes.splice(0).forEach((box) => box.remove())
 })
-
-const selectedText = (box: HTMLTextAreaElement) =>
-  box.value.slice(box.selectionStart, box.selectionEnd)
 
 describe('copyText', () => {
   it('writes the text to navigator.clipboard and returns "copied"', async () => {

@@ -3,7 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ResultCard from './ResultCard'
 import { withSearchFallbacks } from '../lib/links'
 import type { AppleAlt } from '../lib/types'
-import { advance, clickAndSettle, stubClipboard, stubExecCommand } from '../test/clipboard'
+import {
+  FALLBACK_LABEL,
+  RESET_MS,
+  advance,
+  clickAndSettle,
+  expectedShareText,
+  selectedText,
+  stubClipboard,
+  stubExecCommand,
+} from '../test/clipboard'
 import { expectNotShown, isShown, resultRow as row } from '../test/dom'
 
 // AC11 (result card), AC12 (alternates) and AC13 (copy and share), from a
@@ -96,19 +105,11 @@ describe('ResultCard', () => {
   })
 
   describe('copy and share', () => {
-    const SHARE_TEXT = [
-      'Song — First Artist',
-      '',
-      `Apple Music: ${CONVERSION.links.apple}`,
-      `Spotify: ${CONVERSION.links.spotify}`,
-      `YouTube Music: ${CONVERSION.links.ytm}`,
-    ].join('\n')
+    const SHARE_TEXT = expectedShareText('Song — First Artist', CONVERSION.links)
 
     const rowCopyButton = (name: string) => within(row(name)).getByRole('button')
     const shareButton = () => screen.getByRole('button', { name: 'Copy share text' })
-    const fallback = () => screen.getByLabelText('Text to copy') as HTMLTextAreaElement
-    const selectedText = (box: HTMLTextAreaElement) =>
-      box.value.slice(box.selectionStart, box.selectionEnd)
+    const fallback = () => screen.getByLabelText(FALLBACK_LABEL) as HTMLTextAreaElement
 
     beforeEach(() => {
       vi.useFakeTimers()
@@ -148,7 +149,7 @@ describe('ResultCard', () => {
       renderCard()
       const spotifyButton = rowCopyButton('Spotify')
       await clickAndSettle(spotifyButton)
-      await advance(1399)
+      await advance(RESET_MS - 1)
       expect(spotifyButton.textContent).toBe('Copied')
       await advance(1)
       expect(spotifyButton.textContent).toBe('Copy')
@@ -170,15 +171,7 @@ describe('ResultCard', () => {
       const writeText = stubClipboard('ok')
       renderCard({ ...CONVERSION, artist: '' })
       await clickAndSettle(shareButton())
-      expect(writeText).toHaveBeenCalledWith(
-        [
-          'Song',
-          '',
-          `Apple Music: ${CONVERSION.links.apple}`,
-          `Spotify: ${CONVERSION.links.spotify}`,
-          `YouTube Music: ${CONVERSION.links.ytm}`,
-        ].join('\n'),
-      )
+      expect(writeText).toHaveBeenCalledWith(expectedShareText('Song', CONVERSION.links))
     })
 
     it('reads "Copied" on the share button, then "Copy share text" after 1.4 s', async () => {
@@ -187,7 +180,7 @@ describe('ResultCard', () => {
       const button = shareButton()
       await clickAndSettle(button)
       expect(button.textContent).toBe('Copied')
-      await advance(1400)
+      await advance(RESET_MS)
       expect(button.textContent).toBe('Copy share text')
     })
 

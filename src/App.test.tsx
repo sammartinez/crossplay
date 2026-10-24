@@ -6,7 +6,7 @@ import { SPOTIFY_OEMBED_URL } from './constants'
 import { odesliUrl } from './lib/lookup'
 import { fixture } from './test/fixtures'
 import { type Deferred, deferred, jsonResponse, mockFetch, mockJsonp } from './test/network'
-import { stubClipboard } from './test/clipboard'
+import { expectedShareText, stubClipboard } from './test/clipboard'
 import { expectNotShown, resultRow as row } from './test/dom'
 
 // AC11 (convert UI), AC12 (alternates) and AC13 (copy and share), driven through App's rendered
@@ -465,13 +465,11 @@ describe('App', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Copy share text' }))
       await waitFor(() =>
         expect(writeText).toHaveBeenCalledWith(
-          [
-            `${ODESLI_TITLE} — Queen`,
-            '',
-            `Apple Music: ${ODESLI_LINKS['Apple Music']}`,
-            `Spotify: ${ODESLI_LINKS.Spotify}`,
-            `YouTube Music: ${ODESLI_LINKS['YouTube Music']}`,
-          ].join('\n'),
+          expectedShareText(`${ODESLI_TITLE} — Queen`, {
+            apple: ODESLI_LINKS['Apple Music'],
+            spotify: ODESLI_LINKS.Spotify,
+            ytm: ODESLI_LINKS['YouTube Music'],
+          }),
         ),
       )
       expect(await screen.findByRole('button', { name: 'Copied' })).toHaveClass('share')

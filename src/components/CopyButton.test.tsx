@@ -2,20 +2,26 @@ import { useRef } from 'react'
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CopyButton from './CopyButton'
-import { advance, clickAndSettle, stubClipboard, stubExecCommand } from '../test/clipboard'
+import {
+  FALLBACK_LABEL,
+  RESET_MS,
+  advance,
+  clickAndSettle,
+  stubClipboard,
+  stubExecCommand,
+} from '../test/clipboard'
 
 // AC13: the button copies its text, reads "Copied" or "Copy it below", then
 // goes back to its label after 1.4 s.
 
 const TEXT = 'https://open.spotify.com/track/abc'
-const RESET_MS = 1400
 
 function Harness({ label = 'Copy', className }: { label?: string; className?: string }) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null!)
   return (
     <>
       <CopyButton text={TEXT} label={label} className={className} fallbackRef={fallbackRef} />
-      <textarea ref={fallbackRef} readOnly hidden aria-label="Text to copy" />
+      <textarea ref={fallbackRef} readOnly hidden aria-label={FALLBACK_LABEL} />
     </>
   )
 }
