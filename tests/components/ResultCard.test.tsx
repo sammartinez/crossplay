@@ -25,7 +25,8 @@ const CANDIDATES: ArtistCandidate[] = [
 ]
 const CANDIDATE_NAMES = ['First Artist · Song', 'Second Artist · Song (Live)', 'Third Artist · Other Song']
 
-// An exact result with an artist and no candidates, as Odesli gives.
+// A Spotify-source result after the user picked an artist: Apple and Spotify
+// exact, YouTube Music a search, no candidates.
 const CONVERSION = withSearchFallbacks({
   title: 'Song',
   artist: 'First Artist',
@@ -42,12 +43,13 @@ const FALLBACK = withSearchFallbacks({
   candidates: CANDIDATES,
 })
 
-// An Apple-source result Odesli gave no Spotify link for: Spotify is a search.
+// An Apple-source result: only the Apple link is exact, so Spotify and
+// YouTube Music are searches.
 const SPOTIFY_SEARCH = withSearchFallbacks({
   title: 'Song',
   artist: 'First Artist',
   art: 'https://example.com/art.jpg',
-  links: { apple: CANDIDATES[0].url, ytm: 'https://music.youtube.com/watch?v=abc' },
+  links: { apple: CANDIDATES[0].url },
 })
 const SPOTIFY_WEB_SEARCH = 'https://open.spotify.com/search/Song%20First%20Artist'
 const SPOTIFY_APP_SEARCH = 'spotify:search:Song%20First%20Artist'
