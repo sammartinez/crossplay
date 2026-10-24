@@ -13,9 +13,11 @@ import {
   fromSpotifyFallback,
   itunesLookupUrl,
   itunesSearchUrl,
+  odesliHopUrl,
   odesliUrl,
   resolveSpotifyShortLink,
   spotifyOembedUrl,
+  withHopLinks,
 } from './lookup'
 import type {
   Conversion,
@@ -85,14 +87,25 @@ async function viaSource(parsed: ParsedLink): Promise<SourceLookup> {
   return viaSpotify(parsed).catch(() => ({ lookup: null, parsed }))
 }
 
+// A failed or malformed hop keeps the first response: it already has a title
+// and links, and the platforms the hop would fill fall back to searches.
+const withOdesliHop = (first: Lookup, hopUrl: string): Promise<Lookup> =>
+  fetchJson<OdesliResponse>(hopUrl)
+    .then((hop) => withHopLinks(first, hop))
+    .catch(() => first)
+
 async function viaOdesliOrSource(parsed: ParsedLink): Promise<SourceLookup> {
   const url = odesliUrl(parsed.link)
+  let first: Lookup
+  let hopUrl: string | null
   try {
     const body = await fetchJson<OdesliResponse>(url).catch(() => fetchJson<OdesliResponse>(url))
-    return { lookup: fromOdesli(body), parsed }
+    first = fromOdesli(body)
+    hopUrl = odesliHopUrl(body)
   } catch {
     return viaSource(parsed)
   }
+  return { lookup: hopUrl ? await withOdesliHop(first, hopUrl) : first, parsed }
 }
 
 // Resolves on every lookup failure, with a null conversion, so callers need

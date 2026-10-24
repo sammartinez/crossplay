@@ -1,0 +1,477 @@
+diff --git a/src/components/ResultCard.tsx b/src/components/ResultCard.tsx
+index e95a8d8..1768c93 100644
+--- a/src/components/ResultCard.tsx
++++ b/src/components/ResultCard.tsx
+@@ -1,12 +1,15 @@
+ import { useId, useRef } from 'react'
+ import {
++  APP_LINK_CLASS,
+   ARTIST_PICKER_LABEL,
+   CANDIDATE_SEPARATOR,
+   COPY_LABEL,
+   FALLBACK_TEXTAREA_LABEL,
+   FALLBACK_TEXTAREA_ROWS,
+   PLATFORMS,
++  PLATFORM_SPOTIFY,
+   SHARE_LABEL,
++  SPOTIFY_APP_SEARCH_LABEL,
+   TAG_EXACT,
+   TAG_SEARCH,
+ } from '../constants'
+@@ -17,7 +20,7 @@ import CopyButton from './CopyButton'
+ type Props = { conversion: Conversion; onChooseArtist(candidate: ArtistCandidate): void }
+ 
+ export default function ResultCard({ conversion, onChooseArtist }: Props) {
+-  const { title, artist, art, links, exact, candidates } = conversion
++  const { title, artist, art, links, exact, candidates, spotifyAppSearch } = conversion
+   const pickerLabelId = useId()
+   const fallbackRef = useRef<HTMLTextAreaElement>(null)
+ 
+@@ -39,6 +42,11 @@ export default function ResultCard({ conversion, onChooseArtist }: Props) {
+             <span className={exact[key] ? 'tag exact' : 'tag'}>
+               {exact[key] ? TAG_EXACT : TAG_SEARCH}
+             </span>
++            {key === PLATFORM_SPOTIFY && spotifyAppSearch && (
++              <a href={spotifyAppSearch} className={APP_LINK_CLASS}>
++                {SPOTIFY_APP_SEARCH_LABEL}
++              </a>
++            )}
+             <CopyButton
+               text={links[key]}
+               label={COPY_LABEL}
+diff --git a/src/constants.ts b/src/constants.ts
+index c5f0df7..55a1917 100644
+--- a/src/constants.ts
++++ b/src/constants.ts
+@@ -40,6 +40,8 @@ export const SEARCH_URL_BASES = {
+   [PLATFORM_APPLE]: `https://${APPLE_MUSIC_HOST}/us/search?term=`,
+   [PLATFORM_YTM]: 'https://music.youtube.com/search?q=',
+ }
++// The app scheme opens Spotify's own search; the web search above stays the shared link.
++export const SPOTIFY_APP_SEARCH_URI = 'spotify:search:'
+ 
+ export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
+ export const ODESLI_COUNTRY = 'US'
+@@ -108,6 +110,8 @@ export const TAG_EXACT = 'EXACT'
+ export const TAG_SEARCH = 'SEARCH'
+ export const ARTIST_PICKER_LABEL = 'Which artist?'
+ export const CANDIDATE_SEPARATOR = ' · '
++export const SPOTIFY_APP_SEARCH_LABEL = 'Search in Spotify app'
++export const APP_LINK_CLASS = 'app-link'
+ 
+ export const COPY_COMMAND = 'copy'
+ export const COPY_RESULT_COPIED = 'copied'
+diff --git a/src/lib/links.ts b/src/lib/links.ts
+index fa874dd..4675c80 100644
+--- a/src/lib/links.ts
++++ b/src/lib/links.ts
+@@ -11,6 +11,7 @@ import {
+   PLATFORMS,
+   SEARCH_URL_BASES,
+   SLUG_SEPARATOR_RE,
++  SPOTIFY_APP_SEARCH_URI,
+   SPOTIFY_HOST_RE,
+   SPOTIFY_ORIGIN,
+   SPOTIFY_SHORT_HOST,
+@@ -71,8 +72,14 @@ export function parseLink(raw: string): ParsedLink | null {
+ export const searchUrl = (platform: Platform, query: string): string =>
+   SEARCH_URL_BASES[platform] + encodeURIComponent(query)
+ 
++export const searchQuery = ({ title, artist }: Pick<Lookup, 'title' | 'artist'>): string =>
++  [title, artist].filter(Boolean).join(WORD_SEPARATOR)
++
++export const spotifyAppSearchUri = (query: string): string =>
++  SPOTIFY_APP_SEARCH_URI + encodeURIComponent(query)
++
+ export function withSearchFallbacks(lookup: Lookup): Conversion {
+-  const query = [lookup.title, lookup.artist].filter(Boolean).join(WORD_SEPARATOR)
++  const query = searchQuery(lookup)
+   const links = {} as Conversion['links']
+   const exact = {} as Conversion['exact']
+   for (const { key } of PLATFORMS) {
+@@ -80,7 +87,8 @@ export function withSearchFallbacks(lookup: Lookup): Conversion {
+     exact[key] = !!given
+     links[key] = given || searchUrl(key, query)
+   }
+-  return { ...lookup, links, exact }
++  const spotifyAppSearch = exact[PLATFORM_SPOTIFY] ? undefined : spotifyAppSearchUri(query)
++  return { ...lookup, links, exact, spotifyAppSearch }
+ }
+ 
+ export function withArtistChoice(conversion: Conversion, candidate: ArtistCandidate): Conversion {
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+index a3a609e..823f891 100644
+--- a/src/lib/types.ts
++++ b/src/lib/types.ts
+@@ -33,6 +33,7 @@ export type Lookup = {
+ export type Conversion = Lookup & {
+   links: Record<Platform, string>
+   exact: Record<Platform, boolean>
++  spotifyAppSearch?: string
+ }
+ 
+ // Response shapes below list only the fields the mappers read.
+diff --git a/src/styles.css b/src/styles.css
+index b27b07a..33fb888 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -49,6 +49,7 @@ li a{flex:1;color:var(--fg);text-decoration:none;font-weight:500}
+ li a:hover{text-decoration:underline}
+ .tag{font:11px var(--mono);letter-spacing:.04em;color:var(--muted)}
+ .tag.exact{color:var(--ok)}
++li a.app-link{flex:none;padding:6px 0;font-size:12px;font-weight:400;color:var(--muted);white-space:nowrap}
+ .candidates{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+ .candidates button{background:none;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--fg)}
+ .candidates button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+diff --git a/tests/App.test.tsx b/tests/App.test.tsx
+index 28dd656..60d6d47 100644
+--- a/tests/App.test.tsx
++++ b/tests/App.test.tsx
+@@ -68,6 +68,8 @@ const status = () => screen.getByRole('status')
+ const input = () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLInputElement
+ const convertButton = () => screen.getByRole('button', { name: 'Convert' })
+ const platformLink = (name: string) => screen.getByRole('link', { name })
++// A row's platform link, by name, so a second link in the row is not picked up.
++const PLATFORM_NAME = /^(Apple Music|Spotify|YouTube Music)$/
+ const queryPlatformLink = (name: string) => screen.queryByRole('link', { name })
+ const artwork = () => document.querySelector('main img')
+ 
+@@ -265,7 +267,7 @@ describe('App', () => {
+       await waitForResult()
+       const names = screen
+         .getAllByRole('listitem')
+-        .map((li) => within(li).getByRole('link').textContent)
++        .map((li) => within(li).getByRole('link', { name: PLATFORM_NAME }).textContent)
+       expect(names).toEqual(['Apple Music', 'Spotify', 'YouTube Music'])
+     })
+ 
+diff --git a/tests/components/ResultCard.test.tsx b/tests/components/ResultCard.test.tsx
+index 64147a0..f9a7025 100644
+--- a/tests/components/ResultCard.test.tsx
++++ b/tests/components/ResultCard.test.tsx
+@@ -42,6 +42,17 @@ const FALLBACK = withSearchFallbacks({
+   candidates: CANDIDATES,
+ })
+ 
++// An Apple-source result Odesli gave no Spotify link for: Spotify is a search.
++const SPOTIFY_SEARCH = withSearchFallbacks({
++  title: 'Song',
++  artist: 'First Artist',
++  art: 'https://example.com/art.jpg',
++  links: { apple: CANDIDATES[0].url, ytm: 'https://music.youtube.com/watch?v=abc' },
++})
++const SPOTIFY_WEB_SEARCH = 'https://open.spotify.com/search/Song%20First%20Artist'
++const SPOTIFY_APP_SEARCH = 'spotify:search:Song%20First%20Artist'
++const APP_LINK_NAME = 'Search in Spotify app'
++
+ function renderCard(conversion = CONVERSION) {
+   const onChooseArtist = vi.fn()
+   const view = render(<ResultCard conversion={conversion} onChooseArtist={onChooseArtist} />)
+@@ -93,6 +104,92 @@ describe('ResultCard', () => {
+     expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
+   })
+ 
++  describe('Spotify app search link', () => {
++    const appLink = () => screen.getByRole('link', { name: APP_LINK_NAME })
++    const queryAppLink = () => screen.queryByRole('link', { name: APP_LINK_NAME })
++
++    it('shows a "Search in Spotify app" link when Spotify is a search', () => {
++      renderCard(SPOTIFY_SEARCH)
++      expect(appLink()).toBeInTheDocument()
++    })
++
++    it('points the app link at spotify:search: with the "title artist" query encoded', () => {
++      renderCard(SPOTIFY_SEARCH)
++      expect(appLink()).toHaveAttribute('href', SPOTIFY_APP_SEARCH)
++    })
++
++    it('puts the app link in the Spotify row', () => {
++      renderCard(SPOTIFY_SEARCH)
++      expect(within(row('Spotify')).getByRole('link', { name: APP_LINK_NAME })).toBe(appLink())
++    })
++
++    it('does not open the app link in a new tab', () => {
++      renderCard(SPOTIFY_SEARCH)
++      expect(appLink()).not.toHaveAttribute('target')
++    })
++
++    it('keeps the "Spotify" link on the web search, tagged SEARCH, with a Copy button', () => {
++      renderCard(SPOTIFY_SEARCH)
++      expect(screen.getByRole('link', { name: 'Spotify' })).toHaveAttribute('href', SPOTIFY_WEB_SEARCH)
++      expect(within(row('Spotify')).getByText('SEARCH')).toBeInTheDocument()
++      expect(within(row('Spotify')).queryByText('EXACT')).not.toBeInTheDocument()
++      expect(within(row('Spotify')).getByRole('button', { name: 'Copy' })).toBeInTheDocument()
++    })
++
++    it('uses the title alone in the app link when the artist is empty', () => {
++      renderCard(withSearchFallbacks({ title: 'Song', artist: '', links: { apple: CANDIDATES[0].url } }))
++      expect(appLink()).toHaveAttribute('href', 'spotify:search:Song')
++    })
++
++    it('shows no app link when Spotify is exact', () => {
++      renderCard()
++      expect(queryAppLink()).not.toBeInTheDocument()
++    })
++
++    it('shows no app link in the Spotify-source fallback, where Spotify stays exact', () => {
++      renderCard(FALLBACK)
++      expect(queryAppLink()).not.toBeInTheDocument()
++    })
++
++    it('shows only one link in the Apple Music and YouTube Music rows', () => {
++      renderCard(SPOTIFY_SEARCH)
++      expect(within(row('Apple Music')).getAllByRole('link')).toHaveLength(1)
++      expect(within(row('YouTube Music')).getAllByRole('link')).toHaveLength(1)
++    })
++
++    it('never shows a link to a spotify: URI unless it is the app link', () => {
++      renderCard(SPOTIFY_SEARCH)
++      const spotifyScheme = screen
++        .getAllByRole('link')
++        .filter((a) => a.getAttribute('href')?.startsWith('spotify:'))
++      expect(spotifyScheme).toEqual([appLink()])
++    })
++
++    describe('copy and share', () => {
++      beforeEach(() => {
++        vi.useFakeTimers()
++      })
++
++      it('copies the web search URL, not the app URI, from the Spotify row', async () => {
++        const writeText = stubClipboard('ok')
++        renderCard(SPOTIFY_SEARCH)
++        await clickAndSettle(within(row('Spotify')).getByRole('button', { name: 'Copy' }))
++        expect(writeText).toHaveBeenCalledWith(SPOTIFY_WEB_SEARCH)
++      })
++
++      it('shares the web search URL and never the spotify: URI', async () => {
++        const writeText = stubClipboard('ok')
++        renderCard(SPOTIFY_SEARCH)
++        await clickAndSettle(screen.getByRole('button', { name: 'Copy share text' }))
++        expect(writeText).toHaveBeenCalledWith(
++          expectedShareText('Song — First Artist', SPOTIFY_SEARCH.links),
++        )
++        expect(writeText.mock.calls[0][0]).toContain(`Spotify: ${SPOTIFY_WEB_SEARCH}`)
++        expect(writeText.mock.calls[0][0]).not.toContain('spotify:')
++      })
++    })
++  })
++
+   describe('artist picker', () => {
+     it('shows a group labelled "Which artist?" when there are candidates', () => {
+       renderCard(FALLBACK)
+diff --git a/tests/constants.test.ts b/tests/constants.test.ts
+index 9ba7651..caf97a3 100644
+--- a/tests/constants.test.ts
++++ b/tests/constants.test.ts
+@@ -1,8 +1,12 @@
+ import { describe, expect, it } from 'vitest'
+-import { THEME_STORAGE_KEY } from '../src/constants'
++import { SPOTIFY_APP_SEARCH_URI, THEME_STORAGE_KEY } from '../src/constants'
+ 
+ describe('constants', () => {
+   it('stores the theme choice under the cp-theme key', () => {
+     expect(THEME_STORAGE_KEY).toBe('cp-theme')
+   })
++
++  it('opens Spotify app searches with the spotify:search: scheme', () => {
++    expect(SPOTIFY_APP_SEARCH_URI).toBe('spotify:search:')
++  })
+ })
+diff --git a/tests/lib/links.test.ts b/tests/lib/links.test.ts
+index dd55c03..0c0fb25 100644
+--- a/tests/lib/links.test.ts
++++ b/tests/lib/links.test.ts
+@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
+ import {
+   canonicalSpotifyLink,
+   parseLink,
++  searchQuery,
+   searchUrl,
++  spotifyAppSearchUri,
+   withArtistChoice,
+   withSearchFallbacks,
+ } from '../../src/lib/links'
+@@ -181,6 +183,44 @@ describe('searchUrl', () => {
+   })
+ })
+ 
++describe('searchQuery', () => {
++  it('joins the title and the artist with a space', () => {
++    expect(searchQuery({ title: 'Bohemian Rhapsody', artist: 'Queen' })).toBe('Bohemian Rhapsody Queen')
++  })
++
++  it('returns the title alone when the artist is empty', () => {
++    expect(searchQuery({ title: 'Bohemian Rhapsody', artist: '' })).toBe('Bohemian Rhapsody')
++  })
++
++  it('returns the title alone when the artist is missing', () => {
++    expect(searchQuery({ title: 'Bohemian Rhapsody' })).toBe('Bohemian Rhapsody')
++  })
++
++  it('returns an empty string when there is neither title nor artist', () => {
++    expect(searchQuery({})).toBe('')
++  })
++})
++
++describe('spotifyAppSearchUri', () => {
++  it('builds a spotify:search: URI with spaces encoded', () => {
++    expect(spotifyAppSearchUri('Bohemian Rhapsody Queen')).toBe('spotify:search:Bohemian%20Rhapsody%20Queen')
++  })
++
++  it('encodes "/", "&" and "?" in the query', () => {
++    expect(spotifyAppSearchUri('Highway to Hell AC/DC & co?')).toBe(
++      'spotify:search:Highway%20to%20Hell%20AC%2FDC%20%26%20co%3F',
++    )
++  })
++
++  it('leaves apostrophes as encodeURIComponent leaves them', () => {
++    expect(spotifyAppSearchUri("Ain't Gettin' High")).toBe("spotify:search:Ain't%20Gettin'%20High")
++  })
++
++  it('returns the bare scheme prefix for an empty query', () => {
++    expect(spotifyAppSearchUri('')).toBe('spotify:search:')
++  })
++})
++
+ describe('withSearchFallbacks', () => {
+   const exactLinks = {
+     apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
+@@ -238,6 +278,52 @@ describe('withSearchFallbacks', () => {
+     expect(result.candidates).toEqual(candidates)
+   })
+ 
++  it('sets a Spotify app search URI for "title artist" when Spotify is a search', () => {
++    const result = withSearchFallbacks({
++      title: 'Bohemian Rhapsody',
++      artist: 'Queen',
++      links: { apple: exactLinks.apple },
++    })
++    expect(result.exact.spotify).toBe(false)
++    expect(result.links.spotify).toBe('https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen')
++    expect(result.spotifyAppSearch).toBe('spotify:search:Bohemian%20Rhapsody%20Queen')
++  })
++
++  it('uses the same query for the Spotify app URI as for the web search', () => {
++    const result = withSearchFallbacks({ title: 'Highway to Hell', artist: 'AC/DC', links: {} })
++    const webQuery = result.links.spotify.replace('https://open.spotify.com/search/', '')
++    expect(result.spotifyAppSearch).toBe(`spotify:search:${webQuery}`)
++  })
++
++  it('sets the Spotify app search URI for the title alone when the artist is empty', () => {
++    const result = withSearchFallbacks({ title: 'Bohemian Rhapsody', artist: '', links: {} })
++    expect(result.spotifyAppSearch).toBe('spotify:search:Bohemian%20Rhapsody')
++  })
++
++  it('leaves the Spotify app search URI undefined when Spotify is exact', () => {
++    const result = withSearchFallbacks({
++      title: 'Bohemian Rhapsody',
++      artist: 'Queen',
++      links: { spotify: exactLinks.spotify },
++    })
++    expect(result.spotifyAppSearch).toBeUndefined()
++  })
++
++  it('clears a stale Spotify app search URI when Spotify is now exact', () => {
++    const search = withSearchFallbacks({ title: 'Bohemian Rhapsody', artist: 'Queen', links: {} })
++    expect(search.spotifyAppSearch).toBeDefined()
++    const result = withSearchFallbacks({ ...search, links: { spotify: exactLinks.spotify } })
++    expect(result.spotifyAppSearch).toBeUndefined()
++  })
++
++  it('never tags a search link exact', () => {
++    const result = withSearchFallbacks({ title: 'Bohemian Rhapsody', artist: 'Queen', links: {} })
++    for (const key of ['apple', 'spotify', 'ytm'] as const) {
++      expect(result.links[key]).toMatch(/search/)
++      expect(result.exact[key]).toBe(false)
++    }
++  })
++
+   it('does not mutate the lookup it is given', () => {
+     const lookup: Lookup = { title: 'Bohemian Rhapsody', artist: 'Queen', links: { spotify: exactLinks.spotify } }
+     const before = structuredClone(lookup)
+@@ -305,6 +391,46 @@ describe('withArtistChoice', () => {
+     expect(result.exact.ytm).toBe(false)
+   })
+ 
++  it('leaves the Spotify app search URI undefined because Spotify stays exact', () => {
++    const result = withArtistChoice(fallback(), NEON)
++    expect(result.spotifyAppSearch).toBeUndefined()
++  })
++
++  describe('when Spotify is a search', () => {
++    // An Apple-source result with no Spotify link and a blank artist.
++    const spotifySearch = () =>
++      withSearchFallbacks({
++        title: "Ain't Gettin' High",
++        artist: '',
++        links: { ytm: 'https://music.youtube.com/watch?v=abc' },
++        candidates: CANDIDATES,
++      })
++
++    it('rebuilds the Spotify app search URI with the chosen artist', () => {
++      const before = spotifySearch()
++      expect(before.spotifyAppSearch).toBe("spotify:search:Ain't%20Gettin'%20High")
++      const result = withArtistChoice(before, NEON)
++      expect(result.spotifyAppSearch).toBe(
++        "spotify:search:Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
++      )
++    })
++
++    it('rebuilds the Spotify web search with the chosen artist and keeps it not exact', () => {
++      const result = withArtistChoice(spotifySearch(), NEON)
++      expect(result.links.spotify).toBe(
++        "https://open.spotify.com/search/Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
++      )
++      expect(result.exact.spotify).toBe(false)
++    })
++
++    it('switches the Spotify app search URI when a second candidate is chosen', () => {
++      const result = withArtistChoice(withArtistChoice(spotifySearch(), NEON), MATSON)
++      expect(result.spotifyAppSearch).toBe(
++        "spotify:search:Ain't%20Gettin'%20High%20Samuel%20Cody%20Matson",
++      )
++    })
++  })
++
+   it('keeps other exact links as they are', () => {
+     const conversion = withSearchFallbacks({
+       title: 'Song',
+diff --git a/tests/lib/share.test.ts b/tests/lib/share.test.ts
+index 253f693..50c74c3 100644
+--- a/tests/lib/share.test.ts
++++ b/tests/lib/share.test.ts
+@@ -1,4 +1,5 @@
+ import { describe, expect, it } from 'vitest'
++import { withSearchFallbacks } from '../../src/lib/links'
+ import { shareText } from '../../src/lib/share'
+ 
+ const links = {
+@@ -38,4 +39,15 @@ describe('shareText', () => {
+     })
+     expect(text.endsWith('YouTube Music: https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen')).toBe(true)
+   })
++
++  it('never contains a spotify: URI when Spotify is a search', () => {
++    const conversion = withSearchFallbacks({
++      title: 'Bohemian Rhapsody',
++      artist: 'Queen',
++      links: { apple: links.apple, ytm: links.ytm },
++    })
++    const text = shareText(conversion)
++    expect(text).toContain('Spotify: https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen')
++    expect(text).not.toContain('spotify:')
++  })
+ })
+diff --git a/tests/literals.test.ts b/tests/literals.test.ts
+index 0019529..fef43f8 100644
+--- a/tests/literals.test.ts
++++ b/tests/literals.test.ts
+@@ -27,6 +27,7 @@ const UI_TEXT = {
+   COPY_MANUAL_LABEL: 'Copy it below',
+   SHARE_LABEL: 'Copy share text',
+   FALLBACK_TEXTAREA_LABEL: 'Text to copy',
++  SPOTIFY_APP_SEARCH_LABEL: 'Search in Spotify app',
+ }
+ 
+ // The plan lets the implementer rename ALT_SEPARATOR to CANDIDATE_SEPARATOR.

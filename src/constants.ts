@@ -40,11 +40,22 @@ export const SEARCH_URL_BASES = {
   [PLATFORM_APPLE]: `https://${APPLE_MUSIC_HOST}/us/search?term=`,
   [PLATFORM_YTM]: 'https://music.youtube.com/search?q=',
 }
+// The app scheme opens Spotify's own search; the web search above stays the shared link.
+export const SPOTIFY_APP_SEARCH_URI = 'spotify:search:'
 
 export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
 export const ODESLI_COUNTRY = 'US'
 export const ODESLI_COUNTRY_PARAM = 'userCountry'
 export const ODESLI_URL_PARAM = 'url'
+// The linksByPlatform key Odesli uses for each of our platforms.
+export const ODESLI_PLATFORM_KEYS = {
+  [PLATFORM_APPLE]: 'appleMusic',
+  [PLATFORM_SPOTIFY]: 'spotify',
+  [PLATFORM_YTM]: 'youtubeMusic',
+} as const
+// Hop sources in the order Odesli matches them best to other platforms. Never
+// appleMusic or spotify: those are the links a hop fills.
+export const ODESLI_HOP_PLATFORMS = ['youtubeMusic', 'youtube', 'deezer', 'tidal', 'amazonMusic'] as const
 export const OEMBED_URL_PARAM = 'url'
 
 export const ITUNES_HOST = 'itunes.apple.com'
@@ -65,6 +76,8 @@ export const ARTWORK_SIZE_LARGE = '300x300'
 
 export const WORD_SEPARATOR = ' '
 export const WORD_START_RE = /\b\w/g
+export const PUNCTUATION_RE = /\p{P}/gu
+export const WHITESPACE_RUN_RE = /\s+/g
 export const LINE_BREAK = '\n'
 export const TITLE_ARTIST_SEPARATOR = ' — '
 export const SHARE_LABEL_SEPARATOR = ': '
@@ -97,6 +110,8 @@ export const TAG_EXACT = 'EXACT'
 export const TAG_SEARCH = 'SEARCH'
 export const ARTIST_PICKER_LABEL = 'Which artist?'
 export const CANDIDATE_SEPARATOR = ' · '
+export const SPOTIFY_APP_SEARCH_LABEL = 'Search in Spotify app'
+export const APP_LINK_CLASS = 'app-link'
 
 export const COPY_COMMAND = 'copy'
 export const COPY_RESULT_COPIED = 'copied'

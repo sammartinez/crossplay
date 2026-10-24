@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   canonicalSpotifyLink,
   parseLink,
+  searchQuery,
   searchUrl,
+  spotifyAppSearchUri,
   withArtistChoice,
   withSearchFallbacks,
 } from '../../src/lib/links'
@@ -181,6 +183,44 @@ describe('searchUrl', () => {
   })
 })
 
+describe('searchQuery', () => {
+  it('joins the title and the artist with a space', () => {
+    expect(searchQuery({ title: 'Bohemian Rhapsody', artist: 'Queen' })).toBe('Bohemian Rhapsody Queen')
+  })
+
+  it('returns the title alone when the artist is empty', () => {
+    expect(searchQuery({ title: 'Bohemian Rhapsody', artist: '' })).toBe('Bohemian Rhapsody')
+  })
+
+  it('returns the title alone when the artist is missing', () => {
+    expect(searchQuery({ title: 'Bohemian Rhapsody' })).toBe('Bohemian Rhapsody')
+  })
+
+  it('returns an empty string when there is neither title nor artist', () => {
+    expect(searchQuery({})).toBe('')
+  })
+})
+
+describe('spotifyAppSearchUri', () => {
+  it('builds a spotify:search: URI with spaces encoded', () => {
+    expect(spotifyAppSearchUri('Bohemian Rhapsody Queen')).toBe('spotify:search:Bohemian%20Rhapsody%20Queen')
+  })
+
+  it('encodes "/", "&" and "?" in the query', () => {
+    expect(spotifyAppSearchUri('Highway to Hell AC/DC & co?')).toBe(
+      'spotify:search:Highway%20to%20Hell%20AC%2FDC%20%26%20co%3F',
+    )
+  })
+
+  it('leaves apostrophes as encodeURIComponent leaves them', () => {
+    expect(spotifyAppSearchUri("Ain't Gettin' High")).toBe("spotify:search:Ain't%20Gettin'%20High")
+  })
+
+  it('returns the bare scheme prefix for an empty query', () => {
+    expect(spotifyAppSearchUri('')).toBe('spotify:search:')
+  })
+})
+
 describe('withSearchFallbacks', () => {
   const exactLinks = {
     apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
@@ -236,6 +276,52 @@ describe('withSearchFallbacks', () => {
     expect(result.artist).toBe('Queen')
     expect(result.art).toBe('https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a')
     expect(result.candidates).toEqual(candidates)
+  })
+
+  it('sets a Spotify app search URI for "title artist" when Spotify is a search', () => {
+    const result = withSearchFallbacks({
+      title: 'Bohemian Rhapsody',
+      artist: 'Queen',
+      links: { apple: exactLinks.apple },
+    })
+    expect(result.exact.spotify).toBe(false)
+    expect(result.links.spotify).toBe('https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen')
+    expect(result.spotifyAppSearch).toBe('spotify:search:Bohemian%20Rhapsody%20Queen')
+  })
+
+  it('uses the same query for the Spotify app URI as for the web search', () => {
+    const result = withSearchFallbacks({ title: 'Highway to Hell', artist: 'AC/DC', links: {} })
+    const webQuery = result.links.spotify.replace('https://open.spotify.com/search/', '')
+    expect(result.spotifyAppSearch).toBe(`spotify:search:${webQuery}`)
+  })
+
+  it('sets the Spotify app search URI for the title alone when the artist is empty', () => {
+    const result = withSearchFallbacks({ title: 'Bohemian Rhapsody', artist: '', links: {} })
+    expect(result.spotifyAppSearch).toBe('spotify:search:Bohemian%20Rhapsody')
+  })
+
+  it('leaves the Spotify app search URI undefined when Spotify is exact', () => {
+    const result = withSearchFallbacks({
+      title: 'Bohemian Rhapsody',
+      artist: 'Queen',
+      links: { spotify: exactLinks.spotify },
+    })
+    expect(result.spotifyAppSearch).toBeUndefined()
+  })
+
+  it('clears a stale Spotify app search URI when Spotify is now exact', () => {
+    const search = withSearchFallbacks({ title: 'Bohemian Rhapsody', artist: 'Queen', links: {} })
+    expect(search.spotifyAppSearch).toBeDefined()
+    const result = withSearchFallbacks({ ...search, links: { spotify: exactLinks.spotify } })
+    expect(result.spotifyAppSearch).toBeUndefined()
+  })
+
+  it('never tags a search link exact', () => {
+    const result = withSearchFallbacks({ title: 'Bohemian Rhapsody', artist: 'Queen', links: {} })
+    for (const key of ['apple', 'spotify', 'ytm'] as const) {
+      expect(result.links[key]).toMatch(/search/)
+      expect(result.exact[key]).toBe(false)
+    }
   })
 
   it('does not mutate the lookup it is given', () => {
@@ -303,6 +389,46 @@ describe('withArtistChoice', () => {
       "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
     )
     expect(result.exact.ytm).toBe(false)
+  })
+
+  it('leaves the Spotify app search URI undefined because Spotify stays exact', () => {
+    const result = withArtistChoice(fallback(), NEON)
+    expect(result.spotifyAppSearch).toBeUndefined()
+  })
+
+  describe('when Spotify is a search', () => {
+    // An Apple-source result with no Spotify link and a blank artist.
+    const spotifySearch = () =>
+      withSearchFallbacks({
+        title: "Ain't Gettin' High",
+        artist: '',
+        links: { ytm: 'https://music.youtube.com/watch?v=abc' },
+        candidates: CANDIDATES,
+      })
+
+    it('rebuilds the Spotify app search URI with the chosen artist', () => {
+      const before = spotifySearch()
+      expect(before.spotifyAppSearch).toBe("spotify:search:Ain't%20Gettin'%20High")
+      const result = withArtistChoice(before, NEON)
+      expect(result.spotifyAppSearch).toBe(
+        "spotify:search:Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
+      )
+    })
+
+    it('rebuilds the Spotify web search with the chosen artist and keeps it not exact', () => {
+      const result = withArtistChoice(spotifySearch(), NEON)
+      expect(result.links.spotify).toBe(
+        "https://open.spotify.com/search/Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
+      )
+      expect(result.exact.spotify).toBe(false)
+    })
+
+    it('switches the Spotify app search URI when a second candidate is chosen', () => {
+      const result = withArtistChoice(withArtistChoice(spotifySearch(), NEON), MATSON)
+      expect(result.spotifyAppSearch).toBe(
+        "spotify:search:Ain't%20Gettin'%20High%20Samuel%20Cody%20Matson",
+      )
+    })
   })
 
   it('keeps other exact links as they are', () => {
