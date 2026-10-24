@@ -12,7 +12,7 @@ import {
   spotifyOembedUrl,
 } from '../../src/lib/lookup'
 import type { ParsedLink } from '../../src/lib/types'
-import { fixture, odesliWithout } from '../support/fixtures'
+import { fixture, odesliWithout, ytmDirtWith } from '../support/fixtures'
 import {
   type JsonpOutcome,
   fetchedUrls,
@@ -706,19 +706,6 @@ describe('lookupLink Odesli hop', () => {
       expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-apple-dirt.json'))))
     })
   })
-
-  // A hop body for the same song as odesli-ytm-dirt.json, with every entity's
-  // title and/or artist replaced.
-  function ytmDirtWith({ title, artistName }: { title?: string; artistName?: string }) {
-    const body = fixture<{ entitiesByUniqueId: Record<string, object> }>('odesli-ytm-dirt.json')
-    const entitiesByUniqueId = Object.fromEntries(
-      Object.entries(body.entitiesByUniqueId).map(([id, entity]) => [
-        id,
-        { ...entity, ...(title !== undefined && { title }), ...(artistName !== undefined && { artistName }) },
-      ]),
-    )
-    return { ...body, entitiesByUniqueId }
-  }
 
   describe('matching the hop song to the first', () => {
     it.each(['DIRT', 'dirt', 'Dirt.', '  Dirt  '])(

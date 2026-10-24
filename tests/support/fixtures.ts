@@ -18,3 +18,24 @@ export function odesliWithout<T extends OdesliFixture>(name: string, ...platform
   for (const platform of platforms) delete linksByPlatform[platform]
   return { ...body, linksByPlatform }
 }
+
+type OdesliEntityFixture = { title?: string; artistName?: string }
+type OdesliEntitiesFixture = { entitiesByUniqueId: Record<string, OdesliEntityFixture> }
+
+// An Odesli fixture with entity fields replaced: on the one entity `entityId`
+// names, or on every entity when it is left out. A field set to undefined is
+// cleared.
+export function odesliEntityWith<T>(name: string, changes: OdesliEntityFixture, entityId?: string): T {
+  const body = fixture<OdesliEntitiesFixture>(name)
+  const entitiesByUniqueId = Object.fromEntries(
+    Object.entries(body.entitiesByUniqueId).map(([id, entity]) => [
+      id,
+      entityId === undefined || id === entityId ? { ...entity, ...changes } : entity,
+    ]),
+  )
+  return { ...body, entitiesByUniqueId } as T
+}
+
+// odesli-ytm-dirt.json (the hop for the reported case) with entity fields replaced.
+export const ytmDirtWith = <T>(changes: OdesliEntityFixture, entityId?: string): T =>
+  odesliEntityWith<T>('odesli-ytm-dirt.json', changes, entityId)
