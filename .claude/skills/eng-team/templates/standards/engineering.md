@@ -9,6 +9,8 @@ Every role reads this before starting work. Repo conventions beat this file: whe
 3. The implementer makes them pass. The implementer may add unit tests of their own.
 4. **The implementer never edits or deletes QA's tests.** If a QA test is wrong, say so in the MR notes; the reviewer decides, and QA makes the change.
 5. Tests exercise behavior through public interfaces: function signatures, HTTP endpoints, rendered output. No asserting on private state or on mocks of the code under test. Mock only what crosses a process boundary (network, clock, filesystem) and only when the real thing is impractical.
+6. **Test files live under `tests/`, mirroring the source tree**: `src/components/ResultCard.tsx` → `tests/components/ResultCard.test.tsx`, `src/lib/lookup.ts` → `tests/lib/lookup.test.ts`. Shared test helpers, setup, and fixtures go in `tests/support/`. Don't put tests next to source. (Repo conventions still win where a framework requires otherwise.)
+7. **Bug fixes start from the reported input.** The first failing test reproduces the user's exact case (same link, response shapes as the real services return them), not a generic example. Test every fallback and degraded path the bug went through, not just the happy path.
 
 ## Reuse and constants (DRY)
 
@@ -25,6 +27,7 @@ Engineers work on any layer. The same standards apply everywhere:
 - **Backend:** no swallowed errors; side effects at the edges; transactions where partial writes would corrupt state.
 - **Frontend:** follow the existing component and state patterns; semantic HTML and labels; loading and error states are part of the feature, not extras.
 - **Data:** migrations are reversible or the MR says why not.
+- **Honest output:** never present a guess as a fact. When a fallback can't confirm something (an artist, a match, a price), label it as a guess or leave it blank and let the user choose; don't fill it with the first search hit and tag it as exact.
 
 ## Scope
 

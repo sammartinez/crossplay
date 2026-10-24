@@ -22,6 +22,8 @@ If the `ponytail-review` or `pragmatic-programmer` skills are available, apply t
 | S13 | Scope creep: changes unrelated to the task (drive-by refactors, reformatting untouched files) | Revert; open a separate task. |
 | S14 | Any literal value inline instead of in the constants file (`paths.constants`): user-facing text, numbers, regexes, keys, routes, URLs (only `0`, `1`, `""`, booleans, `null` are exempt) | Move it to the constants file and import it. |
 | S17 | Duplicated logic, or new code that re-implements something already in the codebase; reusable logic (validation, formatting, parsing, generic UI) buried inside a feature module | Reuse the existing code, or extract to `paths.shared`. |
+| S18 | A guess shown as fact: a fallback or heuristic result labelled exact/confirmed, or a missing value filled with an unverified one | Label it as a guess, leave it blank, or let the user choose. |
+| S19 | Tests placed outside the repo's test layout (`engineering.md` TDD rule 6) | Move them to the mirrored path under `tests/`. |
 | S15 | *nit* — Over-explaining commit messages or MR descriptions; marketing tone; emoji | One-line subject, short body stating what and why. |
 | S16 | *nit* — Formatting the formatter should own | Run the formatter. |
 
