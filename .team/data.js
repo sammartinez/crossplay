@@ -1,6 +1,6 @@
 window.TEAM = {
   "project": "crossplay",
-  "updated": "2026-10-24T14:33:41Z",
+  "updated": "2026-10-24T15:52:37Z",
   "plans": [
     {
       "id": "PLAN-001",
@@ -28,6 +28,19 @@ window.TEAM = {
         "plans/PLAN-002/screens/fallback-dark.png",
         "plans/PLAN-002/screens/picked-light.png",
         "plans/PLAN-002/screens/picked-dark.png"
+      ]
+    },
+    {
+      "id": "PLAN-003",
+      "title": "Apple links: exact Spotify via Odesli hop + app search link",
+      "status": "done",
+      "created": "2026-10-24T15:25:01Z",
+      "approved": "2026-10-24T15:25:01Z",
+      "screens": [
+        "plans/PLAN-003/screens/spotify-search-light.png",
+        "plans/PLAN-003/screens/spotify-search-dark.png",
+        "plans/PLAN-003/screens/spotify-exact-light.png",
+        "plans/PLAN-003/screens/spotify-exact-dark.png"
       ]
     }
   ],
@@ -290,6 +303,73 @@ window.TEAM = {
       "author": "sr-engineer",
       "second_reviewer": null,
       "sets_pattern": false,
+      "status": "merged"
+    },
+    {
+      "plan": "PLAN-003",
+      "size": "standard",
+      "reviewer": "sr-engineer",
+      "stage": "done",
+      "second_round": 1,
+      "routing": null,
+      "round": 2,
+      "gate_attempts": 2,
+      "blocking": 0,
+      "nits": 4,
+      "findings": {
+        "BUG": 1,
+        "AC9": 1,
+        "S18": 1,
+        "ARCH": 1,
+        "S12": 1,
+        "PERF": 1
+      },
+      "screens": [],
+      "needs_user": false,
+      "opened": "2026-10-24T15:25:01Z",
+      "updated": "2026-10-24T15:43:18Z",
+      "author": "engineer",
+      "second_reviewer": "principal",
+      "id": "MR-009",
+      "task": "T1",
+      "title": "One Odesli hop to fill missing platform links",
+      "branch": "mr/009-odesli-hop",
+      "complexity": "medium",
+      "sets_pattern": false,
+      "status": "merged"
+    },
+    {
+      "plan": "PLAN-003",
+      "size": "standard",
+      "reviewer": "sr-engineer",
+      "stage": "done",
+      "second_round": 1,
+      "routing": null,
+      "round": 1,
+      "gate_attempts": 2,
+      "blocking": 0,
+      "nits": 2,
+      "findings": {
+        "UI": 1,
+        "ARCH": 1
+      },
+      "screens": [
+        "mrs/MR-010/screens/spotify-search-light.png",
+        "mrs/MR-010/screens/spotify-search-dark.png",
+        "mrs/MR-010/screens/spotify-exact-light.png",
+        "mrs/MR-010/screens/spotify-exact-dark.png"
+      ],
+      "needs_user": false,
+      "opened": "2026-10-24T15:25:01Z",
+      "updated": "2026-10-24T15:50:20Z",
+      "author": "engineer",
+      "second_reviewer": "principal",
+      "id": "MR-010",
+      "task": "T2",
+      "title": "Search in Spotify app link",
+      "branch": "mr/010-spotify-app-search",
+      "complexity": "low",
+      "sets_pattern": true,
       "status": "merged"
     }
   ],
@@ -744,6 +824,160 @@ window.TEAM = {
     },
     {
       "at": "2026-10-24T14:33:41Z",
+      "mr": null,
+      "actor": "orchestrator",
+      "type": "plan",
+      "note": "user approved; merged and PR opened"
+    },
+    {
+      "at": "2026-10-24T15:25:01Z",
+      "mr": "MR-009",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "plan approved; QA writing tests"
+    },
+    {
+      "at": "2026-10-24T15:29:47Z",
+      "mr": "MR-009",
+      "actor": "qa",
+      "type": "tests",
+      "note": "35 failing acceptance tests"
+    },
+    {
+      "at": "2026-10-24T15:31:16Z",
+      "mr": "MR-009",
+      "actor": "orchestrator",
+      "type": "gates",
+      "note": "green: 509 tests"
+    },
+    {
+      "at": "2026-10-24T15:32:37Z",
+      "mr": "MR-009",
+      "actor": "sr-engineer",
+      "type": "review",
+      "note": "changes requested: 1 blocking, 1 nit"
+    },
+    {
+      "at": "2026-10-24T15:37:52Z",
+      "mr": "MR-009",
+      "actor": "principal",
+      "type": "escalation",
+      "note": "hop-match rule: compare entity behind the filled link"
+    },
+    {
+      "at": "2026-10-24T15:37:52Z",
+      "mr": "MR-009",
+      "actor": "qa",
+      "type": "tests",
+      "note": "417e822: match-check tests (23 failing)"
+    },
+    {
+      "at": "2026-10-24T15:39:50Z",
+      "mr": "MR-009",
+      "actor": "qa",
+      "type": "tests",
+      "note": "69c4c92: tests aligned with ruling (44 failing)"
+    },
+    {
+      "at": "2026-10-24T15:41:19Z",
+      "mr": "MR-009",
+      "actor": "engineer",
+      "type": "response",
+      "note": "B1 fixed (2309c93); match rule implemented (4521469)"
+    },
+    {
+      "at": "2026-10-24T15:42:10Z",
+      "mr": "MR-009",
+      "actor": "sr-engineer",
+      "type": "review",
+      "note": "round 2 approved"
+    },
+    {
+      "at": "2026-10-24T15:42:10Z",
+      "mr": "MR-009",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "principal second review"
+    },
+    {
+      "at": "2026-10-24T15:43:18Z",
+      "mr": "MR-009",
+      "actor": "principal",
+      "type": "review",
+      "note": "second pass approved: 3 nits"
+    },
+    {
+      "at": "2026-10-24T15:43:18Z",
+      "mr": "MR-009",
+      "actor": "orchestrator",
+      "type": "merge",
+      "note": "merged into team/PLAN-003"
+    },
+    {
+      "at": "2026-10-24T15:43:18Z",
+      "mr": "MR-010",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "QA writing tests"
+    },
+    {
+      "at": "2026-10-24T15:45:46Z",
+      "mr": "MR-010",
+      "actor": "qa",
+      "type": "tests",
+      "note": "22 failing acceptance tests"
+    },
+    {
+      "at": "2026-10-24T15:47:35Z",
+      "mr": "MR-010",
+      "actor": "orchestrator",
+      "type": "gates",
+      "note": "green: 592 tests; 375px screenshots"
+    },
+    {
+      "at": "2026-10-24T15:48:35Z",
+      "mr": "MR-010",
+      "actor": "sr-engineer",
+      "type": "review",
+      "note": "approved: 1 nit (tap target)"
+    },
+    {
+      "at": "2026-10-24T15:49:30Z",
+      "mr": "MR-010",
+      "actor": "engineer",
+      "type": "response",
+      "note": "N1 applied (50b7f64)"
+    },
+    {
+      "at": "2026-10-24T15:49:30Z",
+      "mr": "MR-010",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "principal second review"
+    },
+    {
+      "at": "2026-10-24T15:50:20Z",
+      "mr": "MR-010",
+      "actor": "principal",
+      "type": "review",
+      "note": "second pass approved: 1 nit (pattern note recorded)"
+    },
+    {
+      "at": "2026-10-24T15:50:20Z",
+      "mr": "MR-010",
+      "actor": "orchestrator",
+      "type": "merge",
+      "note": "merged into team/PLAN-003"
+    },
+    {
+      "at": "2026-10-24T15:50:40Z",
+      "mr": null,
+      "actor": "orchestrator",
+      "type": "plan",
+      "note": "all MRs merged; awaiting final approval"
+    },
+    {
+      "at": "2026-10-24T15:52:37Z",
       "mr": null,
       "actor": "orchestrator",
       "type": "plan",
