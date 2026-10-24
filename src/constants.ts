@@ -89,3 +89,11 @@ export const LOOKING_UP_MESSAGE = 'Looking it up…'
 export const SHORT_LINK_MESSAGE =
   'Couldn’t open that short link. In Spotify, tap Share → Copy link, then paste the full open.spotify.com link.'
 export const NOT_FOUND_MESSAGE = 'Couldn’t find that one. Check the link and try again.'
+
+export const INPUT_PLACEHOLDER = 'https://open.spotify.com/track/…'
+export const INPUT_LABEL = 'Spotify or Apple Music link'
+export const CONVERT_LABEL = 'Convert'
+export const TAG_EXACT = 'EXACT'
+export const TAG_SEARCH = 'SEARCH'
+export const WRONG_MATCH_LABEL = 'Wrong Apple match?'
+export const ALT_SEPARATOR = ' · '
