@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eng Team Dashboard</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f3f3f0;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
+  --bar: #2a78d6; --accent: #2a78d6;
+  --good: #0ca30c; --good-text: #006300; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --principal: #6250d6; --sr: #2a78d6; --eng: #1baf7a; --qa: #eda100;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #222220;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+    --bar: #3987e5; --accent: #3987e5; --good-text: #0ca30c;
+    --principal: #9085e9; --sr: #3987e5; --eng: #199e70; --qa: #c98500;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #222220;
+  --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+  --bar: #3987e5; --accent: #3987e5; --good-text: #0ca30c;
+  --principal: #9085e9; --sr: #3987e5; --eng: #199e70; --qa: #c98500;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 20px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+h1 small { font-weight: 400; color: var(--ink-2); font-size: 15px; margin-left: 6px; }
+h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); margin: 0 0 10px; }
+.meta { color: var(--muted); font-size: 13px; display: flex; gap: 12px; align-items: center; }
+.meta label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+section { margin-bottom: 28px; }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; }
+
+/* Needs you */
+.attention { display: grid; gap: 8px; }
+.attention .item { display: flex; gap: 10px; align-items: flex-start; }
+.attention .item b { white-space: nowrap; }
+.attention .none { color: var(--ink-2); }
+.icon { width: 18px; height: 18px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; flex: none; margin-top: 1px; }
+
+/* KPIs */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.kpi .label { color: var(--ink-2); font-size: 13px; }
+.kpi .value { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; margin-top: 4px; }
+.kpi .sub { color: var(--muted); font-size: 12px; }
+
+/* Team */
+.team { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.role { border-top: 3px solid var(--c); }
+.role h3 { margin: 0 0 8px; font-size: 15px; display: flex; justify-content: space-between; align-items: baseline; }
+.role h3 span { font-weight: 400; font-size: 12px; color: var(--muted); }
+.role .now { font-size: 13px; color: var(--ink); min-height: 38px; }
+.role .now em { color: var(--muted); font-style: normal; }
+.role dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 10px 0 0; font-size: 13px; }
+.role dt { color: var(--ink-2); }
+.role dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Pipeline */
+.board { display: grid; align-items: start; grid-auto-flow: column; grid-auto-columns: minmax(170px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.col { background: var(--surface-2); border-radius: 10px; padding: 10px; min-height: 90px; }
+.col h4 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--ink-2); display: flex; justify-content: space-between; }
+.mrcard { background: var(--surface); border: 1px solid var(--ring); border-left: 3px solid var(--c); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 13px; }
+.mrcard .id { font-weight: 600; font-variant-numeric: tabular-nums; }
+.mrcard .t { color: var(--ink); margin: 2px 0 4px; }
+.mrcard .who { color: var(--muted); font-size: 12px; }
+.col .empty { color: var(--muted); font-size: 12px; }
+
+/* UI previews */
+.shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.shot { display: block; text-decoration: none; color: inherit; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; overflow: hidden; }
+.shot .frame { display: block; aspect-ratio: 4 / 3; overflow: hidden; background: #fff; border-bottom: 1px solid var(--ring); }
+.shot img { display: block; width: 250%; max-width: none; }   /* zoom into the top-left, where page content starts */
+.shot div { padding: 8px 10px; font-size: 12px; color: var(--ink-2); }
+.shot div b { color: var(--ink); }
+.shot:hover { border-color: var(--accent); }
+
+/* Two-up */
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 820px) { .two { grid-template-columns: 1fr; } }
+
+/* Findings bars */
+.bars { display: grid; gap: 6px; }
+.barrow { display: grid; grid-template-columns: minmax(120px, 42%) 1fr; gap: 10px; align-items: center; font-size: 13px; }
+.barrow .name { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barrow .name b { color: var(--ink); font-weight: 600; margin-right: 4px; }
+.track { display: flex; align-items: center; gap: 8px; }
+.bar { height: 14px; background: var(--bar); border-radius: 0 4px 4px 0; min-width: 3px; }
+.track span { font-variant-numeric: tabular-nums; color: var(--ink); }
+.barrow:hover .bar { filter: brightness(1.12); }
+
+/* Feed */
+.feed { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; }
+.feed li { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--grid); font-size: 13px; }
+.feed li:last-child { border-bottom: 0; }
+.feed time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.feed .actor { font-weight: 600; }
+
+/* Table */
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 600; color: var(--ink-2); padding: 8px 10px; border-bottom: 1px solid var(--axis); white-space: nowrap; }
+td { padding: 8px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr:hover td { background: var(--surface-2); }
+.toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--ring); border-radius: 6px; padding: 4px 8px; }
+
+/* Status chip */
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; color: var(--ink); }
+.chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.chip.good i { background: var(--good); }
+.chip.warning i { background: var(--warning); }
+.chip.critical i { background: var(--critical); }
+.chip.active i { background: var(--accent); }
+.flag { font-size: 11px; color: var(--critical); font-weight: 600; margin-left: 4px; }
+
+.emptystate { text-align: center; padding: 60px 16px; color: var(--ink-2); }
+.emptystate code { background: var(--surface-2); padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main id="app"><div class="emptystate">Loading…</div></main>
+
+<script>
+const ROLES = {
+  principal:   { name: "Principal Engineer", short: "Principal", color: "var(--principal)" },
+  "sr-engineer": { name: "Sr. Software Engineer", short: "Sr. Engineer", color: "var(--sr)" },
+  engineer:    { name: "Software Engineer", short: "Engineer", color: "var(--eng)" },
+  qa:          { name: "QA Engineer", short: "QA", color: "var(--qa)" },
+};
+const COLUMNS = [
+  ["queued", "Queued"], ["tests", "Writing tests"], ["implementing", "Implementing"],
+  ["in-review", "In review"], ["changes-requested", "Changes requested"],
+  ["escalated", "Escalated"], ["approved", "Approved"], ["merged", "Merged"],
+];
+const STATUS_KIND = { merged: "good", approved: "good", "changes-requested": "warning", escalated: "critical",
+  "in-review": "active", implementing: "active", tests: "active" };
+const TAGS = {
+  S1: "Narrating comments", S2: "Speculative abstraction", S3: "Impossible-state checks", S4: "Reinvented stdlib",
+  S5: "Unneeded dependency", S6: "Swallowed errors", S7: "Generic names", S8: "Weak tests", S9: "Dead code",
+  S10: "Pass-through wrappers", S11: "Doing too much", S12: "Pattern drift", S13: "Scope creep",
+  S14: "Inline constants", S17: "Duplicated logic", S15: "Over-explaining", S16: "Formatting",
+  UI: "UI issues", BUG: "Bugs", SEC: "Security", PERF: "Performance", TEST: "Test issues", ARCH: "Architecture", MISSED: "Missed earlier",
+};
+const OPEN = s => !["merged"].includes(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const role = r => ROLES[r]?.short ?? r ?? "—";
+const ago = iso => {
+  if (!iso) return "—";
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (m < 1) return "just now"; if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60); if (h < 48) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+};
+const hhmm = iso => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const reviewers = m => [m.reviewer, m.second_reviewer].filter(Boolean).map(role).join(" + ");
+const reviewTrail = m => {
+  if (!m.reviewer && !m.second_reviewer) return "";
+  const firstDone = ["second", "done"].includes(m.stage) || ["approved", "merged"].includes(m.status);
+  let s = m.reviewer ? ` → ${role(m.reviewer)}${firstDone ? " ✓" : ""}` : "";
+  if (m.second_reviewer) s += ` → ${role(m.second_reviewer)}${m.status === "merged" || m.stage === "done" ? " ✓" : ""}`;
+  return s;
+};
+const chip = s => `<span class="chip ${STATUS_KIND[s] ?? ""}"><i></i>${esc(s)}</span>`;
+const avg = xs => xs.length ? (xs.reduce((a, b) => a + b, 0) / xs.length) : null;
+let planFilter = "all";
+
+function attentionItems(T) {
+  const items = [];
+  for (const p of T.plans.filter(p => p.status === "awaiting-approval"))
+    items.push(["var(--warning)", "!", `<b>${esc(p.id)}</b> plan is waiting for your approval — ${esc(p.title)}`]);
+  for (const m of T.mrs.filter(m => m.status === "escalated"))
+    items.push(["var(--critical)", "!", `<b>${esc(m.id)}</b> escalated to you after ${m.round} review rounds — ${esc(m.title)}`]);
+  for (const p of T.plans.filter(p => p.status === "in-progress")) {
+    const ms = T.mrs.filter(m => m.plan === p.id);
+    if (ms.length && ms.every(m => m.status === "merged"))
+      items.push(["var(--good)", "✓", `<b>${esc(p.id)}</b> ${ms.length === 1 ? "its MR is" : `all ${ms.length} MRs are`} merged — ready for your final approval`]);
+  }
+  for (const m of T.mrs.filter(m => m.needs_user && m.status !== "escalated" && T.plans.find(p => p.id === m.plan)?.status !== "done"))
+    items.push(["var(--principal)", "P", `<b>${esc(m.id)}</b> authored by the Principal — flagged for your review (${esc(m.status)})`]);
+  for (const m of T.mrs.filter(m => m.size === "small" && m.status === "approved"))
+    items.push(["var(--good)", "✓", `<b>${esc(m.id)}</b> small change approved — waiting for your go-ahead to merge`]);
+  return items;
+}
+
+function render() {
+  const T = window.TEAM;
+  const app = document.getElementById("app");
+  if (!T) {
+    app.innerHTML = `<div class="emptystate"><h1>No team data yet</h1><p>Run <code>/eng-team:run &lt;spec&gt;</code> in Claude Code. This page reads <code>.team/data.js</code> next to it.</p></div>`;
+    return;
+  }
+  const mrs = T.mrs ?? [], plans = T.plans ?? [], events = T.events ?? [];
+  const open = mrs.filter(m => OPEN(m.status));
+  const merged = mrs.filter(m => m.status === "merged");
+  const reviewed = mrs.filter(m => ["approved", "merged"].includes(m.status) && m.round > 0);
+  const firstPass = reviewed.length ? Math.round(100 * reviewed.filter(m => m.round === 1).length / reviewed.length) : null;
+  const avgRounds = avg(reviewed.map(m => m.round));
+  const escalations = mrs.filter(m => m.status === "escalated").length;
+  const everEscalated = new Set(events.filter(e => e.type === "escalated").map(e => e.mr)).size;
+  const openBlocking = open.reduce((a, m) => a + (m.blocking || 0), 0);
+
+  const att = attentionItems({ mrs, plans });
+  const kpis = [
+    ["Open MRs", open.length, `${open.filter(m => m.status === "queued").length} queued`],
+    ["Merged", merged.length, (n => `${n} plan${n === 1 ? "" : "s"} shipped`)(plans.filter(p => p.status === "done").length)],
+    ["First-pass approval", firstPass == null ? "—" : firstPass + "%", "approved in round 1"],
+    ["Avg review rounds", avgRounds == null ? "—" : avgRounds.toFixed(1), "per approved MR"],
+    ["Escalations", escalations, `${everEscalated} all time`],
+    ["Open blocking", openBlocking, "comments on open MRs"],
+  ];
+
+  const roleCard = key => {
+    const R = ROLES[key];
+    const authored = mrs.filter(m => m.author === key);
+    const doneAuthored = authored.filter(m => ["approved", "merged"].includes(m.status) && m.round > 0);
+    const reviewing = mrs.filter(m => m.reviewer === key || m.second_reviewer === key);
+    const reviewsDone = mrs.filter(m => (m.reviewer === key && m.round > 0) || (m.second_reviewer === key && m.second_round > 0)).length;
+    const reviewingNow = mrs.filter(m => m.status === "in-review" && (m.stage === "second" ? m.second_reviewer === key : m.reviewer === key));
+    let now = [];
+    if (key === "qa") now = mrs.filter(m => m.status === "tests").map(m => `Writing tests for <b>${esc(m.id)}</b>`);
+    else {
+      now = authored.filter(m => ["implementing", "changes-requested"].includes(m.status)).map(m => `${m.status === "implementing" ? "Building" : "Revising"} <b>${esc(m.id)}</b>`)
+        .concat(reviewingNow.map(m => `Reviewing <b>${esc(m.id)}</b>${m.stage === "second" ? " (second pass)" : ""}`))
+        .concat(authored.filter(m => m.status === "tests").map(m => `Waiting on QA for <b>${esc(m.id)}</b>`));
+    }
+    const queued = authored.filter(m => m.status === "queued").length;
+    const rows = key === "qa"
+      ? [["Test suites written", mrs.filter(m => m.size !== "small" && !["queued", "tests"].includes(m.status)).length],
+         ["Waiting on QA", mrs.filter(m => m.status === "queued" && m.size !== "small").length]]
+      : [["Authored · merged", `${authored.length} · ${authored.filter(m => m.status === "merged").length}`],
+         ["Avg rounds on own MRs", avg(doneAuthored.map(m => m.round))?.toFixed(1) ?? "—"],
+         ["Reviews done", reviewsDone],
+         ["Queued", queued]];
+    return `<div class="card role" style="--c:${R.color}">
+      <h3>${R.short}<span>${R.name}</span></h3>
+      <div class="now">${now.length ? now.join("<br>") : "<em>Idle</em>"}</div>
+      <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></div>`;
+  };
+
+  const recentMerged = merged.sort((a, b) => (b.updated ?? "").localeCompare(a.updated ?? "")).slice(0, 4);
+  const board = COLUMNS.map(([s, label]) => {
+    const list = s === "merged" ? recentMerged : mrs.filter(m => m.status === s);
+    if (!list.length && ["escalated", "approved"].includes(s)) return "";
+    const total = s === "merged" ? merged.length : list.length;
+    return `<div class="col"><h4>${label}<span>${total}</span></h4>${
+      list.length ? list.map(m => `<div class="mrcard" style="--c:${ROLES[m.author]?.color ?? "var(--muted)"}">
+        <div class="id">${esc(m.id)}${m.size === "small" ? ' <span class="who">· small</span>' : ""}${m.needs_user ? '<span class="flag">YOU</span>' : ""}</div>
+        <div class="t">${esc(m.title)}</div>
+        <div class="who">${role(m.author)}${reviewTrail(m)}${m.round ? ` · round ${m.round}` : ""}${m.second_round ? ` · 2nd pass r${m.second_round}` : ""}${m.blocking ? ` · ${m.blocking} blocking` : ""}</div>
+      </div>`).join("") : '<div class="empty">—</div>'}</div>`;
+  }).join("");
+
+  const shotName = p => p.split("/").pop().replace(/\.[a-z]+$/i, "");
+  const shots = [
+    ...plans.flatMap(p => (p.screens ?? []).map(s => ({ src: s, label: p.id, sub: shotName(s), at: p.approved ?? p.created ?? "" }))),
+    ...mrs.flatMap(m => (m.screens ?? []).map(s => ({ src: s, label: m.id, sub: `${shotName(s)} · ${m.title}`, at: m.updated ?? "" }))),
+  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 8);
+  const shotsHtml = shots.map(s => `<a class="shot" href="${esc(s.src)}" target="_blank" rel="noopener">
+      <span class="frame"><img src="${esc(s.src)}" alt="${esc(s.label)} ${esc(s.sub)}" loading="lazy"></span><div><b>${esc(s.label)}</b> · ${esc(s.sub)}</div></a>`).join("");
+
+  const findings = {};
+  for (const m of mrs) for (const [k, v] of Object.entries(m.findings ?? {})) if (!k.startsWith("AC")) findings[k] = (findings[k] || 0) + v;
+  const acMisses = mrs.reduce((a, m) => a + Object.entries(m.findings ?? {}).filter(([k]) => k.startsWith("AC")).reduce((x, [, v]) => x + v, 0), 0);
+  const top = Object.entries(findings).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const maxF = top[0]?.[1] ?? 1;
+  const bars = top.length ? top.map(([k, v]) => `<div class="barrow" title="${esc(k)} · ${esc(TAGS[k] ?? k)}: ${v} comment${v === 1 ? "" : "s"}">
+      <div class="name"><b>${esc(k)}</b>${esc(TAGS[k] ?? "")}</div>
+      <div class="track"><div class="bar" style="width:${(v / maxF) * 100}%"></div><span>${v}</span></div></div>`).join("")
+    : '<div class="empty" style="color:var(--muted)">No review findings yet.</div>';
+
+  const feed = events.slice(-40).reverse().map(e => `<li><time title="${esc(e.at)}">${hhmm(e.at)}</time>
+      <div><span class="actor">${esc(role(e.actor))}</span> · ${esc(e.mr ?? "")} ${esc(e.type)}${e.note ? ` — <span style="color:var(--ink-2)">${esc(e.note)}</span>` : ""}</div></li>`).join("")
+    || '<li><div style="grid-column:1/-1;color:var(--muted)">No activity yet.</div></li>';
+
+  const planOpts = ["all", ...plans.map(p => p.id), ...(mrs.some(m => !m.plan) ? ["small"] : [])];
+  const rows = mrs.filter(m => planFilter === "all" || (planFilter === "small" ? !m.plan : m.plan === planFilter))
+    .sort((a, b) => (b.updated ?? "").localeCompare(a.updated ?? ""))
+    .map(m => `<tr><td><b>${esc(m.id)}</b>${m.needs_user ? '<span class="flag">YOU</span>' : ""}</td><td>${esc(m.title)}${m.routing ? `<div style="color:var(--muted);font-size:12px">${esc(m.routing)}</div>` : ""}</td>
+      <td>${esc(m.plan ?? "small")}</td><td>${role(m.author)}</td><td>${reviewers(m) || "—"}${m.sets_pattern ? '<div style="color:var(--muted);font-size:12px">sets pattern</div>' : ""}</td><td>${chip(m.status)}</td>
+      <td class="num">${m.round || "—"}${m.second_round ? ` + ${m.second_round}` : ""}</td><td class="num">${m.blocking ?? 0} / ${m.nits ?? 0}</td><td>${esc(m.complexity ?? "")}</td><td>${ago(m.updated)}</td></tr>`).join("");
+
+  app.innerHTML = `
+    <header><h1>${esc(T.project)} <small>Engineering team</small></h1>
+      <div class="meta"><span>Updated ${ago(T.updated)}</span>
+        <label><input type="checkbox" id="auto" ${autoRefresh ? "checked" : ""}> Auto-refresh</label></div></header>
+
+    <section><h2>Needs you</h2><div class="card attention">${
+      att.length ? att.map(([c, ic, html]) => `<div class="item"><span class="icon" style="background:${c}">${ic}</span><div>${html}</div></div>`).join("")
+      : '<div class="none">Nothing waiting on you.</div>'}</div></section>
+
+    <section><h2>At a glance</h2><div class="kpis">${kpis.map(([l, v, s]) =>
+      `<div class="card kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div></div>`).join("")}</div></section>
+
+    <section><h2>Team</h2><div class="team">${Object.keys(ROLES).map(roleCard).join("")}</div></section>
+
+    <section><h2>Pipeline</h2><div class="board">${board}</div></section>
+
+    ${shots.length ? `<section><h2>UI previews</h2><div class="shots">${shotsHtml}</div></section>` : ""}
+
+    <section class="two">
+      <div class="card"><h2>Where reviews push back</h2>
+        <p style="margin:-4px 0 12px;color:var(--muted);font-size:12px">Review comments by rubric tag, all rounds${acMisses ? ` · plus ${acMisses} acceptance-criteria miss${acMisses === 1 ? "" : "es"}` : ""}</p>
+        <div class="bars">${bars}</div></div>
+      <div class="card"><h2>Activity</h2><ul class="feed">${feed}</ul></div>
+    </section>
+
+    <section><h2>Merge requests</h2><div class="card">
+      <div class="toolbar"><label for="plan" style="color:var(--ink-2)">Plan</label>
+        <select id="plan">${planOpts.map(p => `<option ${p === planFilter ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>MR</th><th>Title</th><th>Plan</th><th>Author</th><th>Reviewer</th><th>Status</th><th class="num">Round</th><th class="num">Blocking / nits</th><th>Complexity</th><th>Updated</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="10" style="color:var(--muted)">No merge requests yet.</td></tr>'}</tbody>
+      </table></div></div></section>`;
+
+  document.getElementById("plan").onchange = e => { planFilter = e.target.value; render(); };
+  document.getElementById("auto").onchange = e => { autoRefresh = e.target.checked; try { localStorage.setItem("engTeamAuto", autoRefresh ? "1" : "0"); } catch {} };
+}
+
+// Reload data.js without reloading the page, so filters survive. Works from file://.
+let autoRefresh = true;
+try { autoRefresh = localStorage.getItem("engTeamAuto") !== "0"; } catch {}
+function load() {
+  const s = document.createElement("script");
+  s.src = "data.js?t=" + Date.now();
+  s.onload = () => { render(); s.remove(); };
+  s.onerror = () => { render(); s.remove(); };
+  document.head.appendChild(s);
+}
+load();
+setInterval(() => { if (autoRefresh) load(); }, 15000);
+</script>
+</body>
+</html>
