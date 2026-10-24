@@ -19,8 +19,10 @@ import {
   ODESLI_API_URL,
   ODESLI_COUNTRY,
   ODESLI_COUNTRY_PARAM,
+  ODESLI_HOP_PLATFORMS,
   ODESLI_URL_PARAM,
   OEMBED_URL_PARAM,
+  PLATFORMS,
   SPOTIFY_EMBED_RE,
   SPOTIFY_OEMBED_URL,
 } from '../constants'
@@ -56,6 +58,19 @@ export function fromOdesli(body: OdesliResponse): Lookup {
       ytm: platformLinks?.youtubeMusic?.url,
     },
   }
+}
+
+export function odesliHopUrl(body: OdesliResponse): string | null {
+  const { links } = fromOdesli(body)
+  if (PLATFORMS.every(({ key }) => links[key])) return null
+  const source = ODESLI_HOP_PLATFORMS.map((p) => body.linksByPlatform?.[p]?.url).find(Boolean)
+  return source ? odesliUrl(source) : null
+}
+
+export function withHopLinks(first: Lookup, hop: Lookup): Lookup {
+  const links = { ...first.links }
+  for (const { key } of PLATFORMS) links[key] ||= hop.links[key]
+  return { ...first, links }
 }
 
 // Only called for Apple links, which parseLink always gives an id.

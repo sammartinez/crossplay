@@ -1,6 +1,7 @@
 import type {
   KIND_ALBUM,
   KIND_TRACK,
+  ODESLI_HOP_PLATFORMS,
   PLATFORM_APPLE,
   PLATFORM_SPOTIFY,
   PLATFORMS,
@@ -44,8 +45,7 @@ export type OdesliResponse = {
   linksByPlatform?: {
     appleMusic?: OdesliPlatformLink
     spotify?: OdesliPlatformLink
-    youtubeMusic?: OdesliPlatformLink
-  }
+  } & Partial<Record<(typeof ODESLI_HOP_PLATFORMS)[number], OdesliPlatformLink>>
 }
 
 type ItunesResult = {

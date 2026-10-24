@@ -45,6 +45,9 @@ export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
 export const ODESLI_COUNTRY = 'US'
 export const ODESLI_COUNTRY_PARAM = 'userCountry'
 export const ODESLI_URL_PARAM = 'url'
+// Hop sources in the order Odesli matches them best to other platforms. Never
+// appleMusic or spotify: those are the links a hop fills.
+export const ODESLI_HOP_PLATFORMS = ['youtubeMusic', 'youtube', 'deezer', 'tidal', 'amazonMusic'] as const
 export const OEMBED_URL_PARAM = 'url'
 
 export const ITUNES_HOST = 'itunes.apple.com'
