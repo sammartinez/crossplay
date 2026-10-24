@@ -54,6 +54,17 @@ const row = (name: string) => {
 }
 const artwork = () => document.querySelector('main img')
 
+// Visible as toBeVisible sees it: no `hidden`, display:none or visibility:hidden up the tree.
+const isShown = (el: Element): boolean => {
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    const style = getComputedStyle(node)
+    if (node.hasAttribute('hidden') || style.display === 'none' || style.visibility === 'hidden') {
+      return false
+    }
+  }
+  return true
+}
+
 function submit(value: string) {
   fireEvent.change(input(), { target: { value } })
   fireEvent.click(convertButton())
@@ -237,7 +248,7 @@ describe('App', () => {
       submit(SPOTIFY_TRACK_RAW)
       await waitForResult()
       const img = artwork()
-      if (img) expect(img).not.toBeVisible()
+      expect(img !== null && isShown(img)).toBe(false)
     })
 
     it('shows one row per platform in Apple Music, Spotify, YouTube Music order', async () => {

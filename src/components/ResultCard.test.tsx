@@ -28,6 +28,17 @@ const row = (name: string) => {
   return li
 }
 
+// Visible as toBeVisible sees it: no `hidden`, display:none or visibility:hidden up the tree.
+const isShown = (el: Element): boolean => {
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    const style = getComputedStyle(node)
+    if (node.hasAttribute('hidden') || style.display === 'none' || style.visibility === 'hidden') {
+      return false
+    }
+  }
+  return true
+}
+
 function renderCard(conversion = CONVERSION) {
   const onChooseAlt = vi.fn()
   const view = render(<ResultCard conversion={conversion} onChooseAlt={onChooseAlt} />)
@@ -51,7 +62,7 @@ describe('ResultCard', () => {
   it('hides the artwork when there is none', () => {
     const { view } = renderCard({ ...CONVERSION, art: undefined })
     const img = view.container.querySelector('img')
-    if (img) expect(img).not.toBeVisible()
+    expect(img !== null && isShown(img)).toBe(false)
   })
 
   it('links each platform in a new tab with rel="noopener"', () => {
