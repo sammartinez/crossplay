@@ -36,6 +36,35 @@ export function mockFetch(respond: (url: string) => Response | Promise<Response>
   return fn
 }
 
+// What a strict fetch stand-in answers for one URL: a response, a promise of
+// one, or a rejection for a network failure.
+export type FetchAnswer = () => Response | Promise<Response>
+
+let unexpectedFetches: string[] = []
+
+// Replaces global fetch with one that answers only the URLs in `routes`. Any
+// other request rejects and is recorded, and the test then fails at teardown
+// (see checkNoUnexpectedFetches), so a request no test asked for, such as one
+// to Odesli, can't be hidden by a fallback that swallows the rejection.
+export function mockFetchOnly(routes: Record<string, FetchAnswer>) {
+  return mockFetch((url) => {
+    const answer = routes[url]
+    if (answer) return answer()
+    unexpectedFetches.push(url)
+    return Promise.reject(new Error(`unexpected fetch ${url}`))
+  })
+}
+
+// Throws, failing the test, when a mockFetchOnly stand-in got a request it
+// had no route for. Run after every test by tests/support/setup.ts.
+export function checkNoUnexpectedFetches(): void {
+  const urls = unexpectedFetches
+  unexpectedFetches = []
+  if (urls.length) throw new Error(`unexpected fetch requests: ${urls.join(', ')}`)
+}
+
+export const failsToFetch: FetchAnswer = () => Promise.reject(new TypeError('Failed to fetch'))
+
 export const fetchedUrls = (fn: ReturnType<typeof mockFetch>): string[] =>
   fn.mock.calls.map(([input]) => requestUrl(input))
 

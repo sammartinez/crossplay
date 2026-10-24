@@ -2,43 +2,53 @@ import { StrictMode } from 'react'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import App from '../src/App'
-import { SPOTIFY_OEMBED_URL } from '../src/constants'
-import { odesliUrl } from '../src/lib/lookup'
+import { spotifyOembedUrl } from '../src/lib/lookup'
 import { fixture } from './support/fixtures'
 import {
   type Deferred,
+  type FetchAnswer,
   type JsonpOutcome,
   deferred,
+  fetchedUrls,
   jsonResponse,
-  mockFetch,
+  mockFetchOnly,
   mockJsonp,
 } from './support/network'
 import { expectedShareText, stubClipboard } from './support/clipboard'
 import { expectNotShown, resultRow as row } from './support/dom'
 
-// AC11 (convert UI) and AC13 (copy and share), plus PLAN-002 AC4–AC7 (Odesli
-// retry, honest fallback and the artist picker), driven through App's
-// rendered output with only fetch and the JSONP script load stood in.
+// AC11 (convert UI) and AC13 (copy and share), plus PLAN-002 AC5–AC7 (honest
+// fallback and the artist picker), driven through App's rendered output with
+// only fetch and the JSONP script load stood in.
+// PLAN-004 AC1–AC4, AC9: lookups go straight to oEmbed/iTunes. Every fetch
+// stand-in here answers only the URLs a test names; any other request, such
+// as one to Odesli, fails the test.
 
 const PLACEHOLDER = 'https://open.spotify.com/track/…'
 const LOOKING_UP_MESSAGE = 'Looking it up…'
 const INVALID_LINK_MESSAGE = 'That link isn’t a Spotify or Apple Music track or album.'
 const NOT_FOUND_MESSAGE = 'Couldn’t find that one. Check the link and try again.'
+const APP_LINK_NAME = 'Search in Spotify app'
 
 const SPOTIFY_TRACK_RAW = 'https://open.spotify.com/intl-de/track/4u7EnebtmKWzUH433cf5Qv?si=abc'
 const SPOTIFY_TRACK_LINK = 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv'
 const APPLE_SONG_LINK = 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768'
 const NOT_A_MUSIC_LINK = 'https://example.com/track/123'
 
-// From odesli-track.json
-const ODESLI_TITLE = 'Bohemian Rhapsody - Remastered 2011'
-const ODESLI_ART = 'https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a'
-const ODESLI_LINKS = {
-  'Apple Music':
-    'https://geo.music.apple.com/us/album/_/1440806041?i=1440806768&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m',
-  Spotify: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
-  'YouTube Music': 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
+// From spotify-oembed-track.json
+const SPOTIFY_TITLE = 'Bohemian Rhapsody - Remastered 2011'
+
+// An Apple song link, from itunes-lookup-song.json.
+const APPLE_TITLE = 'Bohemian Rhapsody'
+const APPLE_ARTIST = 'Queen'
+const APPLE_ART =
+  'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/300x300bb.jpg'
+const APPLE_LINKS = {
+  'Apple Music': APPLE_SONG_LINK,
+  Spotify: 'https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen',
+  'YouTube Music': 'https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen',
 }
+const APPLE_APP_SEARCH = 'spotify:search:Bohemian%20Rhapsody%20Queen'
 
 // The reported case (PLAN-002 AC5–AC7), from spotify-oembed-aint-gettin-high.json
 // and itunes-search-aint-gettin-high.json.
@@ -60,8 +70,6 @@ const MATSON_URL = 'https://music.apple.com/us/album/aint-gettin-high/1712345678
 const NEON_URL = 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571'
 const NEON_YTM_SEARCH =
   "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs"
-
-const odesliFails = () => jsonResponse({}, 500)
 
 const main = () => screen.getByRole('main')
 const status = () => screen.getByRole('status')
@@ -86,25 +94,35 @@ async function waitForIdle() {
   await waitFor(() => expect(convertButton()).toBeEnabled())
 }
 
-// Odesli answers every request with odesli-track.json.
-const odesliTrack = () => mockFetch(() => jsonResponse(fixture('odesli-track.json')))
-
-// Odesli answers 429 every time, oEmbed answers with the reported response,
-// and iTunes search answers as `itunes` says.
-function reportedCase(itunes: JsonpOutcome = { data: fixture('itunes-search-aint-gettin-high.json') }) {
-  const fetchMock = mockFetch((url) =>
-    url.startsWith(SPOTIFY_OEMBED_URL)
-      ? jsonResponse(fixture('spotify-oembed-aint-gettin-high.json'))
-      : jsonResponse({}, 429),
-  )
-  mockJsonp(() => itunes)
-  return fetchMock
+// An Apple link: no fetch is expected; the iTunes lookup answers as `itunes` says.
+function appleCase(itunes: JsonpOutcome = { data: fixture('itunes-lookup-song.json') }) {
+  const fetchMock = mockFetchOnly({})
+  const loads = mockJsonp(() => itunes)
+  return { fetchMock, loads }
 }
 
-// Each fetch waits until the test resolves it.
+// The Spotify track link: oEmbed answers as `oembed` says and iTunes search
+// answers with the songs fixture.
+function spotifyCase(oembed: FetchAnswer = () => jsonResponse(fixture('spotify-oembed-track.json'))) {
+  const fetchMock = mockFetchOnly({ [spotifyOembedUrl(SPOTIFY_TRACK_LINK)]: oembed })
+  const loads = mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
+  return { fetchMock, loads }
+}
+
+// oEmbed answers with the reported response, and iTunes search answers as
+// `itunes` says.
+function reportedCase(itunes: JsonpOutcome = { data: fixture('itunes-search-aint-gettin-high.json') }) {
+  const fetchMock = mockFetchOnly({
+    [spotifyOembedUrl(REPORTED_LINK)]: () => jsonResponse(fixture('spotify-oembed-aint-gettin-high.json')),
+  })
+  const loads = mockJsonp(() => itunes)
+  return { fetchMock, loads }
+}
+
+// The Spotify track's oEmbed request waits until the test resolves it.
 function pendingFetch() {
   const pending: Deferred<Response>[] = []
-  const fetchMock = mockFetch(() => {
+  const { fetchMock } = spotifyCase(() => {
     const d = deferred<Response>()
     pending.push(d)
     return d.promise
@@ -150,10 +168,11 @@ describe('App', () => {
     })
 
     it('shows no result card and makes no request', () => {
-      const fetchMock = odesliTrack()
+      const { fetchMock, loads } = appleCase()
       render(<App />)
       expect(queryPlatformLink('Apple Music')).not.toBeInTheDocument()
       expect(fetchMock).not.toHaveBeenCalled()
+      expect(loads).toHaveLength(0)
     })
 
     it('does not mark the page busy', () => {
@@ -163,32 +182,31 @@ describe('App', () => {
   })
 
   describe('starting a conversion', () => {
-    it('looks up the canonical link when the form is submitted', () => {
-      const fetchMock = odesliTrack()
+    it('looks up the canonical link with oEmbed when the form is submitted', () => {
+      const { fetchMock } = spotifyCase()
       render(<App />)
       submit(SPOTIFY_TRACK_RAW)
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-      expect(fetchMock.mock.calls[0][0]).toBe(odesliUrl(SPOTIFY_TRACK_LINK))
+      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
     })
 
     it('looks up the pasted link one tick after the paste event', async () => {
-      const fetchMock = odesliTrack()
+      const { fetchMock } = spotifyCase()
       render(<App />)
       // The paste event fires before the browser puts the text in the input.
       fireEvent.paste(input())
       fireEvent.change(input(), { target: { value: SPOTIFY_TRACK_RAW } })
       expect(fetchMock).not.toHaveBeenCalled()
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-      expect(fetchMock.mock.calls[0][0]).toBe(odesliUrl(SPOTIFY_TRACK_LINK))
+      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
     })
 
     it('shows the result after a paste', async () => {
-      odesliTrack()
+      spotifyCase()
       render(<App />)
       fireEvent.paste(input())
       fireEvent.change(input(), { target: { value: SPOTIFY_TRACK_RAW } })
       await waitForResult()
-      expect(screen.getByText(ODESLI_TITLE)).toBeInTheDocument()
+      expect(screen.getByText(SPOTIFY_TITLE)).toBeInTheDocument()
     })
   })
 
@@ -219,51 +237,54 @@ describe('App', () => {
       const { resolveAll } = pendingFetch()
       render(<App />)
       submit(SPOTIFY_TRACK_RAW)
-      await resolveAll(fixture('odesli-track.json'))
+      await resolveAll(fixture('spotify-oembed-track.json'))
       await waitForIdle()
       expect(main()).not.toHaveClass('busy')
       expect(status().textContent).toBe('')
     })
   })
 
-  describe('the result card', () => {
-    it('shows the title and the artist', async () => {
-      odesliTrack()
+  describe('the result card for an Apple link', () => {
+    it('makes one iTunes lookup and no fetch', async () => {
+      const { fetchMock, loads } = appleCase()
       render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
+      submit(APPLE_SONG_LINK)
       await waitForResult()
-      expect(screen.getByText(ODESLI_TITLE)).toBeInTheDocument()
-      expect(screen.getByText('Queen')).toBeInTheDocument()
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(loads).toHaveLength(1)
+    })
+
+    it('shows the title and the artist from the iTunes lookup', async () => {
+      appleCase()
+      render(<App />)
+      submit(APPLE_SONG_LINK)
+      await waitForResult()
+      expect(screen.getByText(APPLE_TITLE)).toBeInTheDocument()
+      expect(screen.getByText(APPLE_ARTIST)).toBeInTheDocument()
     })
 
     it('shows the artwork when there is one', async () => {
-      odesliTrack()
+      appleCase()
       render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
+      submit(APPLE_SONG_LINK)
       await waitForResult()
-      expect(artwork()).toHaveAttribute('src', ODESLI_ART)
+      expect(artwork()).toHaveAttribute('src', APPLE_ART)
       expect(artwork()).toBeVisible()
     })
 
     it('hides the artwork when there is none', async () => {
-      mockFetch(() =>
-        jsonResponse({
-          entityUniqueId: 'X',
-          entitiesByUniqueId: { X: { title: 'No Art Song', artistName: 'Someone' } },
-          linksByPlatform: {},
-        }),
-      )
+      appleCase({ data: fixture('itunes-lookup-empty.json') })
       render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
+      submit(APPLE_SONG_LINK)
       await waitForResult()
       const img = artwork()
       expectNotShown(img)
     })
 
     it('shows one row per platform in Apple Music, Spotify, YouTube Music order', async () => {
-      odesliTrack()
+      appleCase()
       render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
+      submit(APPLE_SONG_LINK)
       await waitForResult()
       const names = screen
         .getAllByRole('listitem')
@@ -271,44 +292,61 @@ describe('App', () => {
       expect(names).toEqual(['Apple Music', 'Spotify', 'YouTube Music'])
     })
 
-    it.each(Object.entries(ODESLI_LINKS))('links %s to its converted URL', async (name, href) => {
-      odesliTrack()
+    it.each(Object.entries(APPLE_LINKS))('links %s to its converted URL', async (name, href) => {
+      appleCase()
       render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
+      submit(APPLE_SONG_LINK)
       await waitForResult()
       expect(platformLink(name)).toHaveAttribute('href', href)
     })
 
-    it.each(Object.keys(ODESLI_LINKS))(
+    it.each(Object.keys(APPLE_LINKS))(
       'opens the %s link in a new tab with rel="noopener"',
       async (name) => {
-        odesliTrack()
+        appleCase()
         render(<App />)
-        submit(SPOTIFY_TRACK_RAW)
+        submit(APPLE_SONG_LINK)
         await waitForResult()
         expect(platformLink(name)).toHaveAttribute('target', '_blank')
         expect(platformLink(name)).toHaveAttribute('rel', 'noopener')
       },
     )
 
-    it('tags every row EXACT when every platform has an exact link', async () => {
-      odesliTrack()
-      render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
-      await waitForResult()
-      for (const name of Object.keys(ODESLI_LINKS)) {
-        expect(within(row(name)).getByText('EXACT')).toBeInTheDocument()
-        expect(within(row(name)).queryByText('SEARCH')).not.toBeInTheDocument()
-      }
-    })
-
-    it('tags rows without an exact link SEARCH and links them to a search', async () => {
-      // Odesli fails and the iTunes lookup fails: only the Apple link is exact.
-      mockFetch(() => odesliFails())
-      mockJsonp(() => 'error')
+    it('tags Apple Music EXACT and Spotify and YouTube Music SEARCH', async () => {
+      appleCase()
       render(<App />)
       submit(APPLE_SONG_LINK)
       await waitForResult()
+      expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
+      expect(within(row('Spotify')).getByText('SEARCH')).toBeInTheDocument()
+      expect(within(row('Spotify')).queryByText('EXACT')).not.toBeInTheDocument()
+      expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
+      expect(within(row('YouTube Music')).queryByText('EXACT')).not.toBeInTheDocument()
+    })
+
+    it('shows the "Search in Spotify app" link for "title artist"', async () => {
+      appleCase()
+      render(<App />)
+      submit(APPLE_SONG_LINK)
+      await waitForResult()
+      expect(platformLink(APP_LINK_NAME)).toHaveAttribute('href', APPLE_APP_SEARCH)
+    })
+
+    it('shows no artist picker', async () => {
+      appleCase()
+      render(<App />)
+      submit(APPLE_SONG_LINK)
+      await waitForResult()
+      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+    })
+
+    it('uses the slug as the title and a blank artist when the iTunes lookup fails', async () => {
+      appleCase('error')
+      render(<App />)
+      submit(APPLE_SONG_LINK)
+      await waitForResult()
+      expect(screen.getByText(APPLE_TITLE)).toBeInTheDocument()
+      expect(screen.queryByText(APPLE_ARTIST)).not.toBeInTheDocument()
       expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
       expect(within(row('Spotify')).getByText('SEARCH')).toBeInTheDocument()
       expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
@@ -327,25 +365,33 @@ describe('App', () => {
       expect(status()).toHaveClass('err')
     })
 
-    it('shows the not-found message with the error style when nothing is found', async () => {
-      mockFetch(() => jsonResponse(fixture('odesli-empty.json')))
-      render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
-      await waitFor(() => expect(status()).toHaveTextContent(NOT_FOUND_MESSAGE))
-      expect(status()).toHaveClass('err')
-      expect(main()).not.toHaveClass('busy')
-      expect(convertButton()).toBeEnabled()
-    })
+    it.each([
+      ['answers 404', () => jsonResponse({}, 404)],
+      ['fails to fetch', () => Promise.reject(new TypeError('Failed to fetch'))],
+    ] as [string, FetchAnswer][])(
+      'shows the not-found message with the error style when oEmbed %s',
+      async (_, oembed) => {
+        const { fetchMock, loads } = spotifyCase(oembed)
+        render(<App />)
+        submit(SPOTIFY_TRACK_RAW)
+        await waitFor(() => expect(status()).toHaveTextContent(NOT_FOUND_MESSAGE))
+        expect(status()).toHaveClass('err')
+        expect(main()).not.toHaveClass('busy')
+        expect(convertButton()).toBeEnabled()
+        expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
+        expect(loads).toHaveLength(0)
+      },
+    )
 
     it('hides the result card from an earlier conversion', async () => {
-      odesliTrack()
+      appleCase()
       render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
+      submit(APPLE_SONG_LINK)
       await waitForResult()
       submit(NOT_A_MUSIC_LINK)
       expect(status()).toHaveClass('err')
       expect(queryPlatformLink('Apple Music')).not.toBeInTheDocument()
-      expect(screen.queryByText(ODESLI_TITLE)).not.toBeInTheDocument()
+      expect(screen.queryByText(APPLE_TITLE)).not.toBeInTheDocument()
     })
 
     it('drops the error style once a new lookup starts', () => {
@@ -367,25 +413,36 @@ describe('App', () => {
     })
 
     it('converts the link automatically', async () => {
-      const fetchMock = odesliTrack()
+      const { fetchMock } = spotifyCase()
       openWithShareParam(SPOTIFY_TRACK_RAW)
       render(<App />)
       await waitForResult()
-      expect(fetchMock.mock.calls[0][0]).toBe(odesliUrl(SPOTIFY_TRACK_LINK))
-      expect(screen.getByText(ODESLI_TITLE)).toBeInTheDocument()
+      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
+      expect(screen.getByText(SPOTIFY_TITLE)).toBeInTheDocument()
+    })
+
+    it('converts an Apple link automatically with one iTunes lookup and no fetch', async () => {
+      const { fetchMock, loads } = appleCase()
+      openWithShareParam(APPLE_SONG_LINK)
+      render(<App />)
+      await waitForResult()
+      expect(screen.getByText(APPLE_TITLE)).toBeInTheDocument()
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(loads).toHaveLength(1)
     })
 
     it('converts only once', async () => {
-      const fetchMock = odesliTrack()
+      const { fetchMock, loads } = spotifyCase()
       openWithShareParam(SPOTIFY_TRACK_RAW)
       render(<App />)
       await waitForResult()
       await waitForIdle()
       expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(loads).toHaveLength(1)
     })
 
     it('converts only once under StrictMode', async () => {
-      const fetchMock = odesliTrack()
+      const { fetchMock, loads } = spotifyCase()
       openWithShareParam(SPOTIFY_TRACK_RAW)
       render(
         <StrictMode>
@@ -395,10 +452,11 @@ describe('App', () => {
       await waitForResult()
       await waitForIdle()
       expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(loads).toHaveLength(1)
     })
 
     it('shows the invalid-link error for a value that is not a music link', () => {
-      const fetchMock = odesliTrack()
+      const { fetchMock } = spotifyCase()
       openWithShareParam('not-a-link')
       render(<App />)
       expect(input()).toHaveValue('not-a-link')
@@ -408,7 +466,7 @@ describe('App', () => {
     })
   })
 
-  describe('the reported Spotify link when Odesli is rate-limited twice', () => {
+  describe('the reported Spotify link', () => {
     const picker = () => screen.getByRole('group', { name: 'Which artist?' })
     const queryPicker = () => screen.queryByRole('group', { name: 'Which artist?' })
     const pick = (name: string) => within(picker()).getByRole('button', { name })
@@ -419,6 +477,15 @@ describe('App', () => {
       submit(REPORTED_LINK)
       await waitForResult()
     }
+
+    it('requests only the oEmbed, once, then one iTunes search', async () => {
+      const { fetchMock, loads } = reportedCase()
+      render(<App />)
+      submit(REPORTED_LINK)
+      await waitForResult()
+      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(REPORTED_LINK)])
+      expect(loads).toHaveLength(1)
+    })
 
     it('shows the oEmbed title and artwork', async () => {
       await showReported()
@@ -570,6 +637,11 @@ describe('App', () => {
       expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
     })
 
+    it('shows no "Search in Spotify app" link, since Spotify is exact', async () => {
+      await showReported()
+      expect(queryPlatformLink(APP_LINK_NAME)).not.toBeInTheDocument()
+    })
+
     it('shows no picker when the iTunes search fails to load', async () => {
       reportedCase('error')
       render(<App />)
@@ -580,113 +652,20 @@ describe('App', () => {
     })
   })
 
-  describe('the artist picker elsewhere', () => {
-    it('is not shown for an Odesli result', async () => {
-      odesliTrack()
-      render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
-      await waitForResult()
-      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
-    })
-
-    it('is not shown for an Apple link that falls back to the iTunes lookup', async () => {
-      mockFetch(() => jsonResponse({}, 429))
-      mockJsonp(() => ({ data: fixture('itunes-lookup-song.json') }))
-      render(<App />)
-      submit(APPLE_SONG_LINK)
-      await waitForResult()
-      expect(screen.getByText('Queen')).toBeInTheDocument()
-      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
-    })
-
-    it('is not shown when Odesli answers on its second attempt', async () => {
-      let calls = 0
-      mockFetch(() =>
-        ++calls === 1
-          ? Promise.reject(new TypeError('Failed to fetch'))
-          : jsonResponse(fixture('odesli-track.json')),
-      )
-      mockJsonp(() => 'error')
-      render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
-      await waitForResult()
-      expect(screen.getByText(ODESLI_TITLE)).toBeInTheDocument()
-      expect(screen.getByText('Queen')).toBeInTheDocument()
-      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
-    })
-  })
-
-  // PLAN-003 AC1, from odesli-apple-dirt.json (first response, no Spotify)
-  // and odesli-ytm-dirt.json (the hop for its YouTube Music link).
-  describe('the reported Apple link whose Odesli response lacks Spotify', () => {
-    const DIRT_RAW = 'https://music.apple.com/us/album/dirt/6811936164?i=6811936165'
-    const DIRT_YTM = 'https://music.youtube.com/watch?v=PLCHLDRdirt'
-    const DIRT_LINKS = {
-      'Apple Music':
-        'https://geo.music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m',
-      Spotify: 'https://open.spotify.com/track/0PlaceholderDirtTrack0',
-      'YouTube Music': DIRT_YTM,
-    }
-    const DIRT_ART =
-      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/aa/bb/cc/aabbccdd-placeholder/source/512x512bb.jpg'
-
-    async function showDirt() {
-      mockFetch((url) =>
-        url === odesliUrl(DIRT_RAW)
-          ? jsonResponse(fixture('odesli-apple-dirt.json'))
-          : url === odesliUrl(DIRT_YTM)
-            ? jsonResponse(fixture('odesli-ytm-dirt.json'))
-            : Promise.reject(new Error(`unexpected fetch ${url}`)),
-      )
-      mockJsonp(() => 'error')
-      render(<App />)
-      submit(DIRT_RAW)
-      await waitForResult()
-    }
-
-    it('links Spotify to the track Odesli found from the YouTube Music link, tagged EXACT', async () => {
-      await showDirt()
-      expect(platformLink('Spotify')).toHaveAttribute('href', DIRT_LINKS.Spotify)
-      expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
-      expect(within(row('Spotify')).queryByText('SEARCH')).not.toBeInTheDocument()
-    })
-
-    it.each(['Apple Music', 'YouTube Music'] as const)(
-      "links %s to the first Odesli response's URL, tagged EXACT",
-      async (name) => {
-        await showDirt()
-        expect(platformLink(name)).toHaveAttribute('href', DIRT_LINKS[name])
-        expect(within(row(name)).getByText('EXACT')).toBeInTheDocument()
-      },
-    )
-
-    it('shows the title, artist and artwork from the first Odesli response', async () => {
-      await showDirt()
-      expect(screen.getByText('Dirt')).toBeInTheDocument()
-      expect(screen.getByText('Placeholder Artist')).toBeInTheDocument()
-      expect(artwork()).toHaveAttribute('src', DIRT_ART)
-    })
-
-    it('shows no "Search in Spotify app" link', async () => {
-      await showDirt()
-      expect(queryPlatformLink('Search in Spotify app')).not.toBeInTheDocument()
-    })
-  })
-
   describe('copy and share', () => {
     it('copies the converted share text with "Copy share text"', async () => {
-      odesliTrack()
+      appleCase()
       const writeText = stubClipboard('ok')
       render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
+      submit(APPLE_SONG_LINK)
       await waitForResult()
       fireEvent.click(screen.getByRole('button', { name: 'Copy share text' }))
       await waitFor(() =>
         expect(writeText).toHaveBeenCalledWith(
-          expectedShareText(`${ODESLI_TITLE} — Queen`, {
-            apple: ODESLI_LINKS['Apple Music'],
-            spotify: ODESLI_LINKS.Spotify,
-            ytm: ODESLI_LINKS['YouTube Music'],
+          expectedShareText(`${APPLE_TITLE} — ${APPLE_ARTIST}`, {
+            apple: APPLE_LINKS['Apple Music'],
+            spotify: APPLE_LINKS.Spotify,
+            ytm: APPLE_LINKS['YouTube Music'],
           }),
         ),
       )
@@ -694,13 +673,13 @@ describe('App', () => {
     })
 
     it('copies a row link with its Copy button', async () => {
-      odesliTrack()
+      appleCase()
       const writeText = stubClipboard('ok')
       render(<App />)
-      submit(SPOTIFY_TRACK_RAW)
+      submit(APPLE_SONG_LINK)
       await waitForResult()
       fireEvent.click(within(row('YouTube Music')).getByRole('button', { name: 'Copy' }))
-      await waitFor(() => expect(writeText).toHaveBeenCalledWith(ODESLI_LINKS['YouTube Music']))
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(APPLE_LINKS['YouTube Music']))
     })
   })
 })
