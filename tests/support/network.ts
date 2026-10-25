@@ -63,6 +63,13 @@ export function checkNoUnexpectedFetches(): void {
   if (urls.length) throw new Error(`unexpected fetch requests: ${urls.join(', ')}`)
 }
 
+// A fetch answer that responds with `body` as JSON, with status 200 unless
+// `status` says otherwise.
+export const answerJson =
+  (body: unknown, status = 200): FetchAnswer =>
+  () =>
+    jsonResponse(body, status)
+
 export const failsToFetch: FetchAnswer = () => Promise.reject(new TypeError('Failed to fetch'))
 
 export const fetchedUrls = (fn: ReturnType<typeof mockFetch>): string[] =>

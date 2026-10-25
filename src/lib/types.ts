@@ -26,11 +26,13 @@ export type Lookup = {
   art?: string
   links: Partial<Record<Platform, string>>
   candidates?: ArtistCandidate[]
+  likely?: Partial<Record<Platform, boolean>>
 }
 
 export type Conversion = Lookup & {
   links: Record<Platform, string>
   exact: Record<Platform, boolean>
+  likely: Record<Platform, boolean>
   spotifyAppSearch?: string
 }
 

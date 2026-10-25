@@ -64,7 +64,9 @@ async function viaSpotify(parsed: ParsedLink): Promise<SourceLookup> {
   const oembed = await fetchJson<SpotifyOembed>(spotifyOembedUrl(parsed.link))
   const resolved = parsed.kind ? parsed : resolveSpotifyShortLink(oembed)
   if (!resolved) return { lookup: null, parsed }
-  const itunes = await itunesOrNothing(itunesSearchUrl(oembed.title ?? '', resolved.kind))
+  // A blank title has nothing to search for, so it ends as not found.
+  if (!oembed.title?.trim()) return { lookup: null, parsed: resolved }
+  const itunes = await itunesOrNothing(itunesSearchUrl(oembed.title, resolved.kind))
   return { lookup: fromSpotifyFallback(oembed, itunes, resolved), parsed: resolved }
 }
 

@@ -82,13 +82,15 @@ export function withSearchFallbacks(lookup: Lookup): Conversion {
   const query = searchQuery(lookup)
   const links = {} as Conversion['links']
   const exact = {} as Conversion['exact']
+  const likely = {} as Conversion['likely']
   for (const { key } of PLATFORMS) {
     const given = lookup.links[key]
-    exact[key] = !!given
+    likely[key] = !!given && !!lookup.likely?.[key]
+    exact[key] = !!given && !likely[key]
     links[key] = given || searchUrl(key, query)
   }
   const spotifyAppSearch = exact[PLATFORM_SPOTIFY] ? undefined : spotifyAppSearchUri(query)
-  return { ...lookup, links, exact, spotifyAppSearch }
+  return { ...lookup, links, exact, likely, spotifyAppSearch }
 }
 
 export function withArtistChoice(conversion: Conversion, candidate: ArtistCandidate): Conversion {
@@ -96,8 +98,10 @@ export function withArtistChoice(conversion: Conversion, candidate: ArtistCandid
   for (const { key } of PLATFORMS) {
     if (conversion.exact[key]) exactLinks[key] = conversion.links[key]
   }
+  // The user's click confirms the choice, so the old auto-pick's likely record goes.
   return withSearchFallbacks({
     ...conversion,
+    likely: undefined,
     artist: candidate.artist,
     links: { ...exactLinks, [PLATFORM_APPLE]: candidate.url },
   })

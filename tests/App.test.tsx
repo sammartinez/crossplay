@@ -69,6 +69,22 @@ const NEON_URL = 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i
 const NEON_YTM_SEARCH =
   "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs"
 
+// PLAN-004 AC5: a Spotify track with exactly one same-title iTunes artist,
+// from spotify-oembed-unique-match.json and itunes-search-unique-match.json.
+const UNIQUE_LINK = 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd'
+const UNIQUE_TITLE = "Rollin' Down To Memphis - Remastered 2015"
+const MARLOW = 'Marlow Vance'
+const HARPER = 'Harper Lane'
+const PICK_MARLOW = 'Marlow Vance · Rollin Down to Memphis'
+const PICK_DUST = "The Dust Bowl Choir · Rollin' Down To Memphis (Live)"
+const PICK_HARPER = 'Harper Lane · Midnight Ferry'
+const MARLOW_URL = 'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329'
+const HARPER_URL = 'https://music.apple.com/us/album/midnight-ferry/1645678900?i=1645678912'
+const MARLOW_YTM_SEARCH =
+  "https://music.youtube.com/search?q=Rollin'%20Down%20To%20Memphis%20-%20Remastered%202015%20Marlow%20Vance"
+const HARPER_YTM_SEARCH =
+  "https://music.youtube.com/search?q=Rollin'%20Down%20To%20Memphis%20-%20Remastered%202015%20Harper%20Lane"
+
 const main = () => screen.getByRole('main')
 const status = () => screen.getByRole('status')
 const input = () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLInputElement
@@ -114,6 +130,16 @@ function reportedCase(itunes: JsonpOutcome = { data: fixture('itunes-search-aint
     [spotifyOembedUrl(REPORTED_LINK)]: () => jsonResponse(fixture('spotify-oembed-aint-gettin-high.json')),
   })
   const loads = mockJsonp(() => itunes)
+  return { fetchMock, loads }
+}
+
+// oEmbed answers the unique-match link and iTunes search answers with the
+// unique-match results.
+function uniqueCase() {
+  const fetchMock = mockFetchOnly({
+    [spotifyOembedUrl(UNIQUE_LINK)]: () => jsonResponse(fixture('spotify-oembed-unique-match.json')),
+  })
+  const loads = mockJsonp(() => ({ data: fixture('itunes-search-unique-match.json') }))
   return { fetchMock, loads }
 }
 
@@ -320,6 +346,14 @@ describe('App', () => {
       expect(within(row('Spotify')).queryByText('EXACT')).not.toBeInTheDocument()
       expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
       expect(within(row('YouTube Music')).queryByText('EXACT')).not.toBeInTheDocument()
+    })
+
+    it('shows no LIKELY tag', async () => {
+      appleCase()
+      render(<App />)
+      submit(APPLE_SONG_LINK)
+      await waitForResult()
+      expect(screen.queryByText('LIKELY')).not.toBeInTheDocument()
     })
 
     it('shows the "Search in Spotify app" link for "title artist"', async () => {
@@ -548,6 +582,11 @@ describe('App', () => {
       }
     })
 
+    it('shows no LIKELY tag, since two artists have the title', async () => {
+      await showReported()
+      expect(screen.queryByText('LIKELY')).not.toBeInTheDocument()
+    })
+
     it('does not show the old "Wrong Apple match?" block', async () => {
       await showReported()
       expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
@@ -647,6 +686,165 @@ describe('App', () => {
       await waitForResult()
       expect(screen.getByText(REPORTED_TITLE)).toBeInTheDocument()
       expect(queryPicker()).not.toBeInTheDocument()
+    })
+  })
+
+  // PLAN-004 AC5 and AC7, end to end.
+  describe('a Spotify link with a unique iTunes match', () => {
+    const picker = () => screen.getByRole('group', { name: 'Which artist?' })
+    const pick = (name: string) => within(picker()).getByRole('button', { name })
+
+    async function showUnique() {
+      uniqueCase()
+      render(<App />)
+      submit(UNIQUE_LINK)
+      await waitForResult()
+    }
+
+    it('requests only the oEmbed, once, then one iTunes search', async () => {
+      const { fetchMock, loads } = uniqueCase()
+      render(<App />)
+      submit(UNIQUE_LINK)
+      await waitForResult()
+      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(UNIQUE_LINK)])
+      expect(loads).toHaveLength(1)
+    })
+
+    it('shows the original title and the matching artist under it', async () => {
+      await showUnique()
+      expect(screen.getByText(UNIQUE_TITLE)).toBeInTheDocument()
+      expect(screen.getByText(MARLOW)).toBeInTheDocument()
+    })
+
+    it("links Apple Music to the artist's matching song, tagged LIKELY", async () => {
+      await showUnique()
+      expect(platformLink('Apple Music')).toHaveAttribute('href', MARLOW_URL)
+      expect(within(row('Apple Music')).getByText('LIKELY')).toBeInTheDocument()
+      expect(within(row('Apple Music')).queryByText('EXACT')).not.toBeInTheDocument()
+      expect(within(row('Apple Music')).queryByText('SEARCH')).not.toBeInTheDocument()
+    })
+
+    it('styles the LIKELY tag differently from the EXACT and SEARCH tags', async () => {
+      await showUnique()
+      const likely = within(row('Apple Music')).getByText('LIKELY').className
+      expect(likely).not.toBe(within(row('Spotify')).getByText('EXACT').className)
+      expect(likely).not.toBe(within(row('YouTube Music')).getByText('SEARCH').className)
+    })
+
+    it('links Spotify to the canonical track, tagged EXACT', async () => {
+      await showUnique()
+      expect(platformLink('Spotify')).toHaveAttribute('href', UNIQUE_LINK)
+      expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
+    })
+
+    it('links YouTube Music to a search for "<title> <artist>", tagged SEARCH', async () => {
+      await showUnique()
+      expect(platformLink('YouTube Music')).toHaveAttribute('href', MARLOW_YTM_SEARCH)
+      expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
+    })
+
+    it('shows LIKELY on Apple Music only', async () => {
+      await showUnique()
+      expect(screen.getAllByText('LIKELY')).toHaveLength(1)
+    })
+
+    it('copies share text starting "<title> — <artist>" with the LIKELY Apple URL', async () => {
+      const writeText = stubClipboard('ok')
+      await showUnique()
+      fireEvent.click(screen.getByRole('button', { name: 'Copy share text' }))
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(
+          expectedShareText(`${UNIQUE_TITLE} — ${MARLOW}`, {
+            apple: MARLOW_URL,
+            spotify: UNIQUE_LINK,
+            ytm: MARLOW_YTM_SEARCH,
+          }),
+        ),
+      )
+    })
+
+    it('shows the picker with the auto-picked artist pressed and the others not', async () => {
+      await showUnique()
+      const names = within(picker())
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+      expect(names).toEqual([PICK_MARLOW, PICK_DUST, PICK_HARPER])
+      expect(pick(PICK_MARLOW)).toHaveAttribute('aria-pressed', 'true')
+      expect(pick(PICK_DUST)).toHaveAttribute('aria-pressed', 'false')
+      expect(pick(PICK_HARPER)).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('shows the auto-pick when opened with ?u=<link>', async () => {
+      uniqueCase()
+      openWithShareParam(UNIQUE_LINK)
+      render(<App />)
+      await waitForResult()
+      expect(screen.getByText(MARLOW)).toBeInTheDocument()
+      expect(within(row('Apple Music')).getByText('LIKELY')).toBeInTheDocument()
+    })
+
+    describe('after the auto-picked artist is clicked', () => {
+      it('tags Apple Music EXACT on the same song, and shows no LIKELY tag', async () => {
+        await showUnique()
+        fireEvent.click(pick(PICK_MARLOW))
+        expect(platformLink('Apple Music')).toHaveAttribute('href', MARLOW_URL)
+        expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
+        expect(screen.queryByText('LIKELY')).not.toBeInTheDocument()
+      })
+
+      it('keeps that artist and its button pressed', async () => {
+        await showUnique()
+        fireEvent.click(pick(PICK_MARLOW))
+        expect(screen.getByText(MARLOW)).toBeInTheDocument()
+        expect(pick(PICK_MARLOW)).toHaveAttribute('aria-pressed', 'true')
+      })
+    })
+
+    describe('after another artist is clicked', () => {
+      it('switches the artist under the title', async () => {
+        await showUnique()
+        fireEvent.click(pick(PICK_HARPER))
+        expect(screen.getByText(HARPER)).toBeInTheDocument()
+        expect(screen.queryByText(MARLOW)).not.toBeInTheDocument()
+      })
+
+      it("links Apple Music to that artist's song, tagged EXACT, with no LIKELY tag left", async () => {
+        await showUnique()
+        fireEvent.click(pick(PICK_HARPER))
+        expect(platformLink('Apple Music')).toHaveAttribute('href', HARPER_URL)
+        expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
+        expect(screen.queryByText('LIKELY')).not.toBeInTheDocument()
+      })
+
+      it('rebuilds the YouTube Music search with the new artist', async () => {
+        await showUnique()
+        fireEvent.click(pick(PICK_HARPER))
+        expect(platformLink('YouTube Music')).toHaveAttribute('href', HARPER_YTM_SEARCH)
+      })
+
+      it('presses the clicked button and no other', async () => {
+        await showUnique()
+        fireEvent.click(pick(PICK_HARPER))
+        expect(pick(PICK_MARLOW)).toHaveAttribute('aria-pressed', 'false')
+        expect(pick(PICK_DUST)).toHaveAttribute('aria-pressed', 'false')
+        expect(pick(PICK_HARPER)).toHaveAttribute('aria-pressed', 'true')
+      })
+
+      it('copies share text with the new artist and links', async () => {
+        const writeText = stubClipboard('ok')
+        await showUnique()
+        fireEvent.click(pick(PICK_HARPER))
+        fireEvent.click(screen.getByRole('button', { name: 'Copy share text' }))
+        await waitFor(() =>
+          expect(writeText).toHaveBeenCalledWith(
+            expectedShareText(`${UNIQUE_TITLE} — ${HARPER}`, {
+              apple: HARPER_URL,
+              spotify: UNIQUE_LINK,
+              ytm: HARPER_YTM_SEARCH,
+            }),
+          ),
+        )
+      })
     })
   })
 

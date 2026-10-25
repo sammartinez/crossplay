@@ -13,9 +13,9 @@ import { fixture } from '../support/fixtures'
 import {
   type FetchAnswer,
   type JsonpOutcome,
+  answerJson,
   failsToFetch,
   fetchedUrls,
-  jsonResponse,
   jsonpScriptsInDocument,
   mockFetchOnly,
   mockJsonp,
@@ -55,15 +55,6 @@ const APPLE_ALBUM: ParsedLink = {
 }
 
 const callbackRegistered = (name: string) => name in window
-
-const answer =
-  (name: string): FetchAnswer =>
-  () =>
-    jsonResponse(fixture(name))
-const answersStatus =
-  (status: number): FetchAnswer =>
-  () =>
-    jsonResponse({}, status)
 
 // The reported case.
 const REPORTED: ParsedLink = {
@@ -222,6 +213,13 @@ describe('lookupLink', () => {
       expect(conversion?.spotifyAppSearch).toBe(spotifyAppSearchUri('Bohemian Rhapsody Queen'))
     })
 
+    // PLAN-004 AC6/AC8: Apple-source lookups never show LIKELY.
+    it('mark no platform likely', async () => {
+      appleCase()
+      const { conversion } = await lookupLink(APPLE_TRACK)
+      expect(conversion?.likely).toEqual({ apple: false, spotify: false, ytm: false })
+    })
+
     it('offer no artist candidates', async () => {
       appleCase()
       const { conversion } = await lookupLink(APPLE_TRACK)
@@ -278,7 +276,7 @@ describe('lookupLink', () => {
   describe('Spotify links', () => {
     // oEmbed answers as `oembed`; any other fetch fails the test.
     function spotifyCase(
-      oembed: FetchAnswer = answer('spotify-oembed-track.json'),
+      oembed: FetchAnswer = answerJson(fixture('spotify-oembed-track.json')),
       itunes: JsonpOutcome = { data: fixture('itunes-search-songs.json') },
     ) {
       const fetchMock = mockFetchOnly({ [spotifyOembedUrl(SPOTIFY_TRACK.link)]: oembed })
@@ -320,7 +318,7 @@ describe('lookupLink', () => {
     })
 
     it('treat a failed iTunes JSONP load as no results', async () => {
-      spotifyCase(answer('spotify-oembed-track.json'), 'error')
+      spotifyCase(answerJson(fixture('spotify-oembed-track.json')), 'error')
       const { conversion } = await lookupLink(SPOTIFY_TRACK)
       expect(conversion).toEqual(
         withSearchFallbacks(fromSpotifyFallback(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK)),
@@ -337,7 +335,7 @@ describe('lookupLink', () => {
     it.each([404, 429, 500])(
       'return a null conversion when oEmbed answers %i',
       async (status) => {
-        spotifyCase(answersStatus(status))
+        spotifyCase(answerJson({}, status))
         const { conversion } = await lookupLink(SPOTIFY_TRACK)
         expect(conversion).toBeNull()
       },
@@ -353,7 +351,7 @@ describe('lookupLink', () => {
     it.each([404, 429, 500])(
       'make exactly one request and no iTunes request when oEmbed answers %i',
       async (status) => {
-        const { fetchMock, loads } = spotifyCase(answersStatus(status))
+        const { fetchMock, loads } = spotifyCase(answerJson({}, status))
         await lookupLink(SPOTIFY_TRACK)
         expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
         expect(loads).toHaveLength(0)
@@ -364,6 +362,106 @@ describe('lookupLink', () => {
       spotifyCase(failsToFetch)
       const { parsed } = await lookupLink(SPOTIFY_TRACK)
       expect(parsed).toEqual(SPOTIFY_TRACK)
+    })
+
+    // MR-011 N2 / PLAN-004 AC6: a blank oEmbed title ends in NOT_FOUND, with
+    // no iTunes search.
+    it.each(['', '   '])(
+      'return a null conversion after one request and no iTunes search when the oEmbed title is %j',
+      async (title) => {
+        const { fetchMock, loads } = spotifyCase(
+          answerJson({ ...fixture<object>('spotify-oembed-track.json'), title }),
+        )
+        const { conversion } = await lookupLink(SPOTIFY_TRACK)
+        expect(conversion).toBeNull()
+        expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+        expect(loads).toHaveLength(0)
+      },
+    )
+
+    it('return a null conversion and no iTunes search when the oEmbed has no title', async () => {
+      const untitled = fixture<Record<string, unknown>>('spotify-oembed-track.json')
+      delete untitled.title
+      const { loads } = spotifyCase(answerJson(untitled))
+      const { conversion } = await lookupLink(SPOTIFY_TRACK)
+      expect(conversion).toBeNull()
+      expect(loads).toHaveLength(0)
+    })
+
+    // PLAN-004 AC6: two artists match after cleaning, so nothing is likely.
+    it('mark no platform likely when Queen and The Petersens both match', async () => {
+      spotifyCase()
+      const { conversion } = await lookupLink(SPOTIFY_TRACK)
+      expect(conversion?.artist).toBe('')
+      expect(conversion?.likely).toEqual({ apple: false, spotify: false, ytm: false })
+    })
+  })
+
+  // PLAN-004 AC5: a Spotify track whose iTunes results have exactly one
+  // artist with the same cleaned title.
+  describe('a Spotify link with a unique iTunes match', () => {
+    const UNIQUE: ParsedLink = {
+      src: 'spotify',
+      kind: 'track',
+      id: '3kVr8XqPz2LmNw7TyB5hJd',
+      link: 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd',
+    }
+    const UNIQUE_TITLE = "Rollin' Down To Memphis - Remastered 2015"
+    const MARLOW_MATCH_URL =
+      'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329'
+
+    function uniqueCase() {
+      const fetchMock = mockFetchOnly({
+        [spotifyOembedUrl(UNIQUE.link)]: answerJson(fixture('spotify-oembed-unique-match.json')),
+      })
+      const loads = mockJsonp(() => ({ data: fixture('itunes-search-unique-match.json') }))
+      return { fetchMock, loads }
+    }
+
+    it('fetches the oEmbed once, then makes one iTunes search for the original title', async () => {
+      const { fetchMock, loads } = uniqueCase()
+      await lookupLink(UNIQUE)
+      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(UNIQUE.link)])
+      expect(loads.map((l) => l.src.startsWith(itunesSearchUrl(UNIQUE_TITLE, 'track')))).toEqual([true])
+    })
+
+    it('sets the artist to the matching artist', async () => {
+      uniqueCase()
+      const { conversion } = await lookupLink(UNIQUE)
+      expect(conversion?.title).toBe(UNIQUE_TITLE)
+      expect(conversion?.artist).toBe('Marlow Vance')
+    })
+
+    it("links Apple Music to that artist's matching result, likely and not exact", async () => {
+      uniqueCase()
+      const { conversion } = await lookupLink(UNIQUE)
+      expect(conversion?.links.apple).toBe(MARLOW_MATCH_URL)
+      expect(conversion?.likely.apple).toBe(true)
+      expect(conversion?.exact.apple).toBe(false)
+    })
+
+    it('keeps the canonical Spotify link exact and not likely', async () => {
+      uniqueCase()
+      const { conversion } = await lookupLink(UNIQUE)
+      expect(conversion?.links.spotify).toBe(UNIQUE.link)
+      expect(conversion?.exact.spotify).toBe(true)
+      expect(conversion?.likely.spotify).toBe(false)
+    })
+
+    it('links YouTube Music to a search for "title artist", neither exact nor likely', async () => {
+      uniqueCase()
+      const { conversion } = await lookupLink(UNIQUE)
+      expect(conversion?.links.ytm).toBe(
+        "https://music.youtube.com/search?q=Rollin'%20Down%20To%20Memphis%20-%20Remastered%202015%20Marlow%20Vance",
+      )
+      expect(conversion?.exact.ytm).toBe(false)
+      expect(conversion?.likely.ytm).toBe(false)
+    })
+
+    it('marks only Apple Music likely', async () => {
+      uniqueCase()
+      const { conversion } = await lookupLink(UNIQUE)
+      expect(conversion?.likely).toEqual({ apple: true, spotify: false, ytm: false })
     })
   })
 
@@ -379,26 +477,26 @@ describe('lookupLink', () => {
     }
 
     it('fetch only the oEmbed for the short link, once', async () => {
-      const { fetchMock } = shortLinkCase(answer('spotify-oembed-track.json'))
+      const { fetchMock } = shortLinkCase(answerJson(fixture('spotify-oembed-track.json')))
       await lookupLink(SPOTIFY_SHORT)
       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_SHORT.link)])
     })
 
     it('return the parsed link resolved from the oEmbed player URL', async () => {
-      shortLinkCase(answer('spotify-oembed-track.json'))
+      shortLinkCase(answerJson(fixture('spotify-oembed-track.json')))
       const { parsed } = await lookupLink(SPOTIFY_SHORT)
       expect(parsed).toEqual(SPOTIFY_TRACK)
     })
 
     it('use the resolved canonical link as the exact Spotify link', async () => {
-      shortLinkCase(answer('spotify-oembed-track.json'))
+      shortLinkCase(answerJson(fixture('spotify-oembed-track.json')))
       const { conversion } = await lookupLink(SPOTIFY_SHORT)
       expect(conversion?.links.spotify).toBe(SPOTIFY_TRACK.link)
       expect(conversion?.exact.spotify).toBe(true)
     })
 
     it('search iTunes albums when the short link resolves to an album', async () => {
-      const { loads } = shortLinkCase(answer('spotify-oembed-album.json'), {
+      const { loads } = shortLinkCase(answerJson(fixture('spotify-oembed-album.json')), {
         data: fixture('itunes-search-albums.json'),
       })
       await lookupLink(SPOTIFY_SHORT)
@@ -407,7 +505,7 @@ describe('lookupLink', () => {
     })
 
     it('return a null conversion and the unresolved link when oEmbed has no player', async () => {
-      const { fetchMock, loads } = shortLinkCase(answer('spotify-oembed-no-player.json'))
+      const { fetchMock, loads } = shortLinkCase(answerJson(fixture('spotify-oembed-no-player.json')))
       const { conversion, parsed } = await lookupLink(SPOTIFY_SHORT)
       expect(conversion).toBeNull()
       expect(parsed).toEqual(SPOTIFY_SHORT)
@@ -431,7 +529,7 @@ describe('lookupLink', () => {
     // `itunes`. `requests` records every request, fetch or JSONP, in order.
     function reportedCase(
       itunes: JsonpOutcome = { data: fixture('itunes-search-aint-gettin-high.json') },
-      oembed: FetchAnswer = answer('spotify-oembed-aint-gettin-high.json'),
+      oembed: FetchAnswer = answerJson(fixture('spotify-oembed-aint-gettin-high.json')),
     ) {
       const requests: string[] = []
       const fetchMock = mockFetchOnly({
@@ -487,6 +585,12 @@ describe('lookupLink', () => {
       const { conversion } = await lookupLink(REPORTED)
       expect(conversion?.links.ytm).toBe("https://music.youtube.com/search?q=Ain't%20Gettin'%20High")
       expect(conversion?.exact.ytm).toBe(false)
+    })
+
+    it('marks no platform likely, since two artists have the title', async () => {
+      reportedCase()
+      const { conversion } = await lookupLink(REPORTED)
+      expect(conversion?.likely).toEqual({ apple: false, spotify: false, ytm: false })
     })
 
     it('offers the iTunes artists as candidates, one per artist, in iTunes order', async () => {
