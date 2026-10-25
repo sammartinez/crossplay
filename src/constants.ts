@@ -75,11 +75,13 @@ export const PATH_SEPARATOR = '/'
 // they name a different recording.
 const REMASTER_SUFFIX = String.raw`(\d{4}\s+)?remaster(ed)?(\s+\d{4})?(\s+version)?`
 const FEAT_CREDIT_SUFFIX = String.raw`(feat\.?|ft\.?|featuring)\s+[^()[\]]+`
+// After a dash the credit stops at the next spaced dash, so "- feat. X - Live" keeps "- Live".
+const DASH_FEAT_CREDIT_SUFFIX = String.raw`(feat\.?|ft\.?|featuring)\s+((?!\s[-–—]\s)[^()[\]])+`
 const WITH_CREDIT_SUFFIX = String.raw`with\s+[^()[\]]+`
 const SAME_MIX_SUFFIX = String.raw`radio edit|single version|mono|stereo`
 export const TITLE_NOISE_RES = [
   new RegExp(
-    String.raw`\s+[-–—]\s+(${REMASTER_SUFFIX}|${FEAT_CREDIT_SUFFIX}|${SAME_MIX_SUFFIX})\s*$`,
+    String.raw`\s+[-–—]\s+(${REMASTER_SUFFIX}|${DASH_FEAT_CREDIT_SUFFIX}|${SAME_MIX_SUFFIX})\s*$`,
     'i',
   ),
   new RegExp(
