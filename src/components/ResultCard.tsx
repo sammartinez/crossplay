@@ -10,17 +10,30 @@ import {
   PLATFORM_SPOTIFY,
   SHARE_LABEL,
   SPOTIFY_APP_SEARCH_LABEL,
+  TAG_CLASS,
   TAG_EXACT,
+  TAG_EXACT_CLASS,
+  TAG_LIKELY,
+  TAG_LIKELY_CLASS,
   TAG_SEARCH,
 } from '../constants'
 import { shareText } from '../lib/share'
-import type { ArtistCandidate, Conversion } from '../lib/types'
+import type { ArtistCandidate, Conversion, Platform } from '../lib/types'
 import CopyButton from './CopyButton'
 
 type Props = { conversion: Conversion; onChooseArtist(candidate: ArtistCandidate): void }
 
+function rowTag({ exact, likely }: Conversion, key: Platform) {
+  const [className, text] = exact[key]
+    ? [TAG_EXACT_CLASS, TAG_EXACT]
+    : likely[key]
+      ? [TAG_LIKELY_CLASS, TAG_LIKELY]
+      : [TAG_CLASS, TAG_SEARCH]
+  return <span className={className}>{text}</span>
+}
+
 export default function ResultCard({ conversion, onChooseArtist }: Props) {
-  const { title, artist, art, links, exact, candidates, spotifyAppSearch } = conversion
+  const { title, artist, art, links, candidates, spotifyAppSearch } = conversion
   const pickerLabelId = useId()
   const fallbackRef = useRef<HTMLTextAreaElement>(null)
 
@@ -39,9 +52,7 @@ export default function ResultCard({ conversion, onChooseArtist }: Props) {
             <a href={links[key]} target="_blank" rel="noopener">
               {name}
             </a>
-            <span className={exact[key] ? 'tag exact' : 'tag'}>
-              {exact[key] ? TAG_EXACT : TAG_SEARCH}
-            </span>
+            {rowTag(conversion, key)}
             {key === PLATFORM_SPOTIFY && spotifyAppSearch && (
               <a href={spotifyAppSearch} className={APP_LINK_CLASS}>
                 {SPOTIFY_APP_SEARCH_LABEL}

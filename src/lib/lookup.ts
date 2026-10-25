@@ -21,7 +21,7 @@ import {
   SPOTIFY_OEMBED_URL,
 } from '../constants'
 import { spotifyParsedLink } from './links'
-import { titleCase } from './text'
+import { sameTitle, titleCase } from './text'
 import { withParams } from './url'
 import type {
   ArtistCandidate,
@@ -69,18 +69,23 @@ export const itunesSearchUrl = (title: string, kind?: Kind): string =>
     [ITUNES_COUNTRY_PARAM]: ITUNES_COUNTRY,
   })
 
-function firstPerArtist(candidates: ArtistCandidate[]): ArtistCandidate[] {
-  const seen = new Set<string>()
-  return candidates.filter(({ artist }) => {
-    const key = artist.toLowerCase()
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+// Each artist keeps its first result with the wanted title, or else its first
+// result, so its button and an auto-pick point at the same release.
+function firstPerArtist(candidates: ArtistCandidate[], title: string): ArtistCandidate[] {
+  const byArtist = new Map<string, ArtistCandidate>()
+  for (const candidate of candidates) {
+    const key = candidate.artist.toLowerCase()
+    const kept = byArtist.get(key)
+    if (!kept || (!sameTitle(kept.title, title) && sameTitle(candidate.title, title))) {
+      byArtist.set(key, candidate)
+    }
+  }
+  return [...byArtist.values()]
 }
 
-// oEmbed has no artist and a title search can't confirm one, so the artist
-// stays blank and the search hits are only offered as candidates to pick.
+// oEmbed has no artist and a title search can't confirm one. When exactly one
+// artist has the title, it is pre-selected and its Apple link marked likely;
+// otherwise the artist stays blank and the hits are only offered to pick from.
 export function fromSpotifyFallback(
   oembed: SpotifyOembed,
   itunesBody: ItunesResponse | null,
@@ -93,11 +98,25 @@ export function fromSpotifyFallback(
       .replace(ITUNES_HOST, APPLE_MUSIC_HOST)
       .split(ITUNES_TRACKING_PARAM)[0],
   }))
-  return {
+  const title = oembed.title ?? ''
+  const candidates = firstPerArtist(
+    searchHits.filter(({ artist, url }) => artist && url),
+    title,
+  )
+  const unpicked: Lookup = {
     title: oembed.title,
     artist: '',
     art: oembed.thumbnail_url,
     links: { spotify: p.link },
-    candidates: firstPerArtist(searchHits.filter(({ artist, url }) => artist && url)),
+    candidates,
+  }
+  const matches = candidates.filter((candidate) => sameTitle(candidate.title, title))
+  if (matches.length !== 1) return unpicked
+  const [pick] = matches
+  return {
+    ...unpicked,
+    artist: pick.artist,
+    links: { ...unpicked.links, apple: pick.url },
+    likely: { apple: true },
   }
 }
