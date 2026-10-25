@@ -1,6 +1,6 @@
 window.TEAM = {
   "project": "crossplay",
-  "updated": "2026-10-24T15:52:37Z",
+  "updated": "2026-10-25T23:24:36Z",
   "plans": [
     {
       "id": "PLAN-001",
@@ -41,6 +41,19 @@ window.TEAM = {
         "plans/PLAN-003/screens/spotify-search-dark.png",
         "plans/PLAN-003/screens/spotify-exact-light.png",
         "plans/PLAN-003/screens/spotify-exact-dark.png"
+      ]
+    },
+    {
+      "id": "PLAN-004",
+      "title": "Remove Odesli; title cleaning + LIKELY auto-pick",
+      "status": "done",
+      "created": "2026-10-24T16:37:23Z",
+      "approved": "2026-10-24T16:37:23Z",
+      "screens": [
+        "plans/PLAN-004/screens/likely-light.png",
+        "plans/PLAN-004/screens/likely-dark.png",
+        "plans/PLAN-004/screens/picker-light.png",
+        "plans/PLAN-004/screens/picker-dark.png"
       ]
     }
   ],
@@ -369,6 +382,74 @@ window.TEAM = {
       "title": "Search in Spotify app link",
       "branch": "mr/010-spotify-app-search",
       "complexity": "low",
+      "sets_pattern": true,
+      "status": "merged"
+    },
+    {
+      "plan": "PLAN-004",
+      "size": "standard",
+      "reviewer": "sr-engineer",
+      "stage": "done",
+      "second_round": 2,
+      "routing": null,
+      "round": 1,
+      "gate_attempts": 1,
+      "blocking": 0,
+      "nits": 6,
+      "findings": {
+        "TEST": 3,
+        "AC10": 1,
+        "MISSED": 1,
+        "S9": 1,
+        "ARCH": 1,
+        "S1": 1
+      },
+      "screens": [],
+      "needs_user": false,
+      "opened": "2026-10-24T16:37:23Z",
+      "updated": "2026-10-24T16:51:00Z",
+      "author": "engineer",
+      "second_reviewer": "principal",
+      "complexity": "medium",
+      "id": "MR-011",
+      "task": "T1",
+      "title": "Remove Odesli; lookups go straight to oEmbed/iTunes",
+      "branch": "mr/011-remove-odesli",
+      "sets_pattern": false,
+      "status": "merged"
+    },
+    {
+      "plan": "PLAN-004",
+      "size": "standard",
+      "reviewer": "sr-engineer",
+      "stage": "done",
+      "second_round": 2,
+      "routing": null,
+      "round": 1,
+      "gate_attempts": 2,
+      "blocking": 0,
+      "nits": 6,
+      "findings": {
+        "UI": 4,
+        "BUG": 1,
+        "ARCH": 1
+      },
+      "screens": [
+        "mrs/MR-012/screens/likely-light.png",
+        "mrs/MR-012/screens/likely-dark.png",
+        "mrs/MR-012/screens/picker-light.png",
+        "mrs/MR-012/screens/picker-dark.png"
+      ],
+      "needs_user": false,
+      "opened": "2026-10-24T16:37:23Z",
+      "updated": "2026-10-25T23:15:48Z",
+      "author": "engineer",
+      "second_reviewer": "principal",
+      "complexity": "medium",
+      "id": "MR-012",
+      "task": "T2",
+      "title": "Title cleaning + LIKELY auto-pick",
+      "branch": "mr/012-likely-autopick",
       "sets_pattern": true,
       "status": "merged"
     }
@@ -978,6 +1059,153 @@ window.TEAM = {
     },
     {
       "at": "2026-10-24T15:52:37Z",
+      "mr": null,
+      "actor": "orchestrator",
+      "type": "plan",
+      "note": "user approved; merged and PR opened"
+    },
+    {
+      "at": "2026-10-24T16:37:23Z",
+      "mr": "MR-011",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "plan approved; QA writing tests"
+    },
+    {
+      "at": "2026-10-24T16:44:51Z",
+      "mr": "MR-011",
+      "actor": "qa",
+      "type": "tests",
+      "note": "131 failing (strict fetch mock + purity)"
+    },
+    {
+      "at": "2026-10-24T16:46:05Z",
+      "mr": "MR-011",
+      "actor": "orchestrator",
+      "type": "gates",
+      "note": "green: 528 tests"
+    },
+    {
+      "at": "2026-10-24T16:48:33Z",
+      "mr": "MR-011",
+      "actor": "sr-engineer",
+      "type": "review",
+      "note": "approved: 4 nits (carried to MR-012)"
+    },
+    {
+      "at": "2026-10-24T16:48:33Z",
+      "mr": "MR-011",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "principal second review"
+    },
+    {
+      "at": "2026-10-24T16:49:46Z",
+      "mr": "MR-011",
+      "actor": "principal",
+      "type": "review",
+      "note": "second pass: changes requested (1 blocking in test support -> QA)"
+    },
+    {
+      "at": "2026-10-24T16:50:36Z",
+      "mr": "MR-011",
+      "actor": "qa",
+      "type": "response",
+      "note": "B1/N2 fixed (1a850dc)"
+    },
+    {
+      "at": "2026-10-24T16:51:00Z",
+      "mr": "MR-011",
+      "actor": "principal",
+      "type": "review",
+      "note": "second pass round 2 approved"
+    },
+    {
+      "at": "2026-10-24T16:51:00Z",
+      "mr": "MR-011",
+      "actor": "orchestrator",
+      "type": "merge",
+      "note": "merged into team/PLAN-004"
+    },
+    {
+      "at": "2026-10-24T16:51:00Z",
+      "mr": "MR-012",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "QA writing tests"
+    },
+    {
+      "at": "2026-10-24T16:57:54Z",
+      "mr": "MR-012",
+      "actor": "qa",
+      "type": "tests",
+      "note": "168 failing acceptance tests"
+    },
+    {
+      "at": "2026-10-25T23:09:41Z",
+      "mr": "MR-012",
+      "actor": "orchestrator",
+      "type": "gates",
+      "note": "green: 742 tests; 375px overflow observed on long title"
+    },
+    {
+      "at": "2026-10-25T23:11:57Z",
+      "mr": "MR-012",
+      "actor": "sr-engineer",
+      "type": "review",
+      "note": "approved: 3 nits (overflow pre-existing, feat-dash edge, contrast)"
+    },
+    {
+      "at": "2026-10-25T23:11:57Z",
+      "mr": "MR-012",
+      "actor": "orchestrator",
+      "type": "status",
+      "note": "principal second review"
+    },
+    {
+      "at": "2026-10-25T23:13:54Z",
+      "mr": "MR-012",
+      "actor": "principal",
+      "type": "review",
+      "note": "second pass: 1 blocking (feat-dash regex); overflow+contrast to follow-up"
+    },
+    {
+      "at": "2026-10-25T23:14:39Z",
+      "mr": "MR-012",
+      "actor": "qa",
+      "type": "tests",
+      "note": "2099903: 4 failing rows for B1"
+    },
+    {
+      "at": "2026-10-25T23:15:28Z",
+      "mr": "MR-012",
+      "actor": "engineer",
+      "type": "response",
+      "note": "B1 fixed (a7d0181)"
+    },
+    {
+      "at": "2026-10-25T23:15:48Z",
+      "mr": "MR-012",
+      "actor": "principal",
+      "type": "review",
+      "note": "second pass round 2 approved"
+    },
+    {
+      "at": "2026-10-25T23:15:48Z",
+      "mr": "MR-012",
+      "actor": "orchestrator",
+      "type": "merge",
+      "note": "merged into team/PLAN-004"
+    },
+    {
+      "at": "2026-10-25T23:16:04Z",
+      "mr": null,
+      "actor": "orchestrator",
+      "type": "plan",
+      "note": "all MRs merged; awaiting final approval"
+    },
+    {
+      "at": "2026-10-25T23:24:36Z",
       "mr": null,
       "actor": "orchestrator",
       "type": "plan",
