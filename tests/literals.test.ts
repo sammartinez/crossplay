@@ -21,6 +21,7 @@ const UI_TEXT = {
   CONVERT_LABEL: 'Convert',
   TAG_EXACT: 'EXACT',
   TAG_SEARCH: 'SEARCH',
+  TAG_LIKELY: 'LIKELY',
   ARTIST_PICKER_LABEL: 'Which artist?',
   COPY_LABEL: 'Copy',
   COPIED_LABEL: 'Copied',
@@ -59,6 +60,19 @@ describe.each(COMPONENT_FILES)('%s', (file) => {
 
   it.each([...Object.values(UI_TEXT), CANDIDATE_SEPARATOR].filter((v) => v.trim()))('does not inline "%s"', (text) => {
     expect(source(file)).not.toMatch(new RegExp(`['"\`]${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`))
+  })
+})
+
+// PLAN-004 T2: the result card's tag classes are constants too.
+const TAG_CLASSES = { TAG_CLASS: 'tag', TAG_EXACT_CLASS: 'tag exact', TAG_LIKELY_CLASS: 'tag likely' }
+
+describe('tag class constants', () => {
+  it.each(Object.entries(TAG_CLASSES))('exports %s', (name, value) => {
+    expect(exported[name]).toBe(value)
+  })
+
+  it.each(Object.values(TAG_CLASSES))('keeps "%s" out of src/components/ResultCard.tsx', (value) => {
+    expect(source('src/components/ResultCard.tsx')).not.toMatch(new RegExp(`['"\`]${value}['"\`]`))
   })
 })
 

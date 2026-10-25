@@ -1,0 +1,76 @@
+{
+  "_note": "Invented values in the real iTunes Search shape (see itunes-search-aint-gettin-high.json); the live service isn't reachable from here. Marlow Vance is the only artist with a same-title result, and it is that artist's second result.",
+  "resultCount": 5,
+  "results": [
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 1523456789,
+      "collectionId": 1587650000,
+      "trackId": 1587650004,
+      "artistName": "Marlow Vance",
+      "collectionName": "Paper Lanterns",
+      "trackName": "Paper Lanterns",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/paper-lanterns/1587650000?i=1587650004&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/paper-lanterns/1587650000?i=1587650004&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/aa/bb/cc/aabbccdd/source/100x100bb.jpg",
+      "country": "USA"
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 1523456789,
+      "collectionId": 1587654321,
+      "trackId": 1587654329,
+      "artistName": "Marlow Vance",
+      "collectionName": "Rivertown",
+      "trackName": "Rollin Down to Memphis",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/dd/ee/ff/ddeeff00/source/100x100bb.jpg",
+      "country": "USA"
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 1498765432,
+      "collectionId": 1623456780,
+      "trackId": 1623456791,
+      "artistName": "The Dust Bowl Choir",
+      "collectionName": "Live at the Ryman",
+      "trackName": "Rollin' Down To Memphis (Live)",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/rollin-down-to-memphis-live/1623456780?i=1623456791&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/rollin-down-to-memphis-live/1623456780?i=1623456791&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/11/22/33/11223344/source/100x100bb.jpg",
+      "country": "USA"
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 1534567890,
+      "collectionId": 1645678900,
+      "trackId": 1645678912,
+      "artistName": "Harper Lane",
+      "collectionName": "Midnight Ferry",
+      "trackName": "Midnight Ferry",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/midnight-ferry/1645678900?i=1645678912&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/midnight-ferry/1645678900?i=1645678912&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/44/55/66/44556677/source/100x100bb.jpg",
+      "country": "USA"
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 1523456789,
+      "collectionId": 1701234560,
+      "trackId": 1701234575,
+      "artistName": "Marlow Vance",
+      "collectionName": "Greatest Hits",
+      "trackName": "Rollin' Down To Memphis",
+      "collectionViewUrl": "https://itunes.apple.com/us/album/rollin-down-to-memphis/1701234560?i=1701234575&uo=4",
+      "trackViewUrl": "https://itunes.apple.com/us/album/rollin-down-to-memphis/1701234560?i=1701234575&uo=4",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/77/88/99/778899aa/source/100x100bb.jpg",
+      "country": "USA"
+    }
+  ]
+}

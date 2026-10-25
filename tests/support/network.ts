@@ -30,11 +30,47 @@ const requestUrl = (input: RequestInfo | URL): string =>
 
 // Replaces global fetch. `respond` gets the request URL and returns the
 // response (or a promise of one, or throws/rejects for a network failure).
-export function mockFetch(respond: (url: string) => Response | Promise<Response>) {
+function mockFetch(respond: (url: string) => Response | Promise<Response>) {
   const fn = vi.fn(async (input: RequestInfo | URL) => respond(requestUrl(input)))
   vi.stubGlobal('fetch', fn)
   return fn
 }
+
+// What a strict fetch stand-in answers for one URL: a response, a promise of
+// one, or a rejection for a network failure.
+export type FetchAnswer = () => Response | Promise<Response>
+
+let unexpectedFetches: string[] = []
+
+// Replaces global fetch with one that answers only the URLs in `routes`. Any
+// other request rejects and is recorded, and the test then fails at teardown
+// (see checkNoUnexpectedFetches), so a request no test asked for, such as one
+// to Odesli, can't be hidden by a fallback that swallows the rejection.
+export function mockFetchOnly(routes: Record<string, FetchAnswer>) {
+  return mockFetch((url) => {
+    const answer = routes[url]
+    if (answer) return answer()
+    unexpectedFetches.push(url)
+    return Promise.reject(new Error(`unexpected fetch ${url}`))
+  })
+}
+
+// Throws, failing the test, when a mockFetchOnly stand-in got a request it
+// had no route for. Run after every test by tests/support/setup.ts.
+export function checkNoUnexpectedFetches(): void {
+  const urls = unexpectedFetches
+  unexpectedFetches = []
+  if (urls.length) throw new Error(`unexpected fetch requests: ${urls.join(', ')}`)
+}
+
+// A fetch answer that responds with `body` as JSON, with status 200 unless
+// `status` says otherwise.
+export const answerJson =
+  (body: unknown, status = 200): FetchAnswer =>
+  () =>
+    jsonResponse(body, status)
+
+export const failsToFetch: FetchAnswer = () => Promise.reject(new TypeError('Failed to fetch'))
 
 export const fetchedUrls = (fn: ReturnType<typeof mockFetch>): string[] =>
   fn.mock.calls.map(([input]) => requestUrl(input))

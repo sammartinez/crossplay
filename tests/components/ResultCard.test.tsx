@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ResultCard from '../../src/components/ResultCard'
@@ -25,7 +27,8 @@ const CANDIDATES: ArtistCandidate[] = [
 ]
 const CANDIDATE_NAMES = ['First Artist · Song', 'Second Artist · Song (Live)', 'Third Artist · Other Song']
 
-// An exact result with an artist and no candidates, as Odesli gives.
+// A Spotify-source result after the user picked an artist: Apple and Spotify
+// exact, YouTube Music a search, no candidates.
 const CONVERSION = withSearchFallbacks({
   title: 'Song',
   artist: 'First Artist',
@@ -42,16 +45,31 @@ const FALLBACK = withSearchFallbacks({
   candidates: CANDIDATES,
 })
 
-// An Apple-source result Odesli gave no Spotify link for: Spotify is a search.
+// An Apple-source result: only the Apple link is exact, so Spotify and
+// YouTube Music are searches.
 const SPOTIFY_SEARCH = withSearchFallbacks({
   title: 'Song',
   artist: 'First Artist',
   art: 'https://example.com/art.jpg',
-  links: { apple: CANDIDATES[0].url, ytm: 'https://music.youtube.com/watch?v=abc' },
+  links: { apple: CANDIDATES[0].url },
 })
 const SPOTIFY_WEB_SEARCH = 'https://open.spotify.com/search/Song%20First%20Artist'
 const SPOTIFY_APP_SEARCH = 'spotify:search:Song%20First%20Artist'
 const APP_LINK_NAME = 'Search in Spotify app'
+
+// PLAN-004 AC5: a Spotify fallback where First Artist was auto-picked, so the
+// Apple link is their song, tagged LIKELY.
+const AUTO_PICKED = withSearchFallbacks({
+  title: 'Song',
+  artist: 'First Artist',
+  art: 'https://example.com/art.jpg',
+  links: { spotify: 'https://open.spotify.com/track/abc', apple: CANDIDATES[0].url },
+  candidates: CANDIDATES,
+  likely: { apple: true },
+})
+
+// The tag in a row: the element whose whole text is EXACT, LIKELY or SEARCH.
+const tagIn = (name: string) => within(row(name)).getByText(/^(EXACT|LIKELY|SEARCH)$/)
 
 function renderCard(conversion = CONVERSION) {
   const onChooseArtist = vi.fn()
@@ -102,6 +120,97 @@ describe('ResultCard', () => {
     expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
     expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
     expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
+  })
+
+  // PLAN-004 AC5/AC8: each row's tag is EXACT, LIKELY or SEARCH, each styled
+  // with its own class.
+  describe('tags', () => {
+    it('tags a likely Apple link LIKELY, not EXACT or SEARCH', () => {
+      renderCard(AUTO_PICKED)
+      expect(tagIn('Apple Music')).toHaveTextContent('LIKELY')
+      expect(within(row('Apple Music')).queryByText('EXACT')).not.toBeInTheDocument()
+      expect(within(row('Apple Music')).queryByText('SEARCH')).not.toBeInTheDocument()
+    })
+
+    it('keeps the likely Apple link as the Apple Music href', () => {
+      renderCard(AUTO_PICKED)
+      expect(screen.getByRole('link', { name: 'Apple Music' })).toHaveAttribute('href', CANDIDATES[0].url)
+    })
+
+    it('tags the other rows of an auto-picked result EXACT and SEARCH', () => {
+      renderCard(AUTO_PICKED)
+      expect(tagIn('Spotify')).toHaveTextContent('EXACT')
+      expect(tagIn('YouTube Music')).toHaveTextContent('SEARCH')
+    })
+
+    it('shows exactly one LIKELY tag for an auto-picked result', () => {
+      renderCard(AUTO_PICKED)
+      expect(screen.getAllByText('LIKELY')).toHaveLength(1)
+    })
+
+    it('shows no LIKELY tag when nothing is likely', () => {
+      renderCard(FALLBACK)
+      expect(screen.queryByText('LIKELY')).not.toBeInTheDocument()
+    })
+
+    it('gives an EXACT tag the classes "tag exact"', () => {
+      renderCard(AUTO_PICKED)
+      expect(tagIn('Spotify')).toHaveAttribute('class', 'tag exact')
+    })
+
+    it('gives a LIKELY tag the classes "tag likely"', () => {
+      renderCard(AUTO_PICKED)
+      expect(tagIn('Apple Music')).toHaveAttribute('class', 'tag likely')
+    })
+
+    it('gives a SEARCH tag the class "tag" alone', () => {
+      renderCard(AUTO_PICKED)
+      expect(tagIn('YouTube Music')).toHaveAttribute('class', 'tag')
+    })
+
+    it('presses the auto-picked artist\'s button and no other', () => {
+      renderCard(AUTO_PICKED)
+      expect(candidateButton(CANDIDATE_NAMES[0])).toHaveAttribute('aria-pressed', 'true')
+      expect(candidateButton(CANDIDATE_NAMES[1])).toHaveAttribute('aria-pressed', 'false')
+      expect(candidateButton(CANDIDATE_NAMES[2])).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('shows the auto-picked artist under the title', () => {
+      renderCard(AUTO_PICKED)
+      expect(screen.getByText('First Artist')).toBeInTheDocument()
+    })
+
+    // The card's stylesheet, read as text: jsdom applies no CSS.
+    describe('styles', () => {
+      const css = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8')
+      const ruleColor = (selector: string) => {
+        const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const rule = css.match(new RegExp(`(?:^|[}\\s,])${escaped}\\s*\\{([^}]*)\\}`))
+        return rule?.[1].match(/(?:^|;)\s*color\s*:\s*([^;]+)/)?.[1].trim()
+      }
+      // The body of the block that opens with `opener`, up to its first `}`.
+      const blockAfter = (opener: string) => {
+        const at = css.indexOf(opener)
+        return at < 0 ? '' : css.slice(at, css.indexOf('}', at))
+      }
+
+      it('gives .tag.likely its own color, distinct from .tag and .tag.exact', () => {
+        const likely = ruleColor('.tag.likely')
+        expect(likely).toBeDefined()
+        expect(likely).not.toBe(ruleColor('.tag'))
+        expect(likely).not.toBe(ruleColor('.tag.exact'))
+      })
+
+      it('uses a color token for .tag.likely that both palettes define', () => {
+        const token = ruleColor('.tag.likely')?.match(/^var\((--[\w-]+)\)$/)?.[1]
+        expect(token).toBeDefined()
+        expect(token).not.toBe('--muted')
+        expect(token).not.toBe('--ok')
+        expect(blockAfter(':root{')).toContain(`${token}:`)
+        expect(blockAfter('[data-theme="dark"]{')).toContain(`${token}:`)
+        expect(blockAfter('@media (prefers-color-scheme:dark)')).toContain(`${token}:`)
+      })
+    })
   })
 
   describe('Spotify app search link', () => {
