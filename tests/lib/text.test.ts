@@ -94,6 +94,7 @@ const MATCHES_SONG = [
   // Combinations
   'Song (feat. X) - Remastered 2011',
   'Song - Radio Edit (feat. X)',
+  'Song - feat. X - Remastered 2011',
 ]
 
 const DOES_NOT_MATCH_SONG = [
@@ -110,6 +111,9 @@ const DOES_NOT_MATCH_SONG = [
   "Song (Taylor's Version)",
   'Song (Re-Recorded)',
   'Song - Re-recorded 2015',
+  // A dash feat credit stops at the next spaced dash, so the version marker stays
+  'Song - feat. X - Live',
+  'Song - feat. X - Remix',
 ]
 
 describe('cleanTitle', () => {
