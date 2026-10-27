@@ -31,7 +31,6 @@ const UI_TEXT = {
   SPOTIFY_APP_SEARCH_LABEL: 'Search in Spotify app',
 }
 
-// The plan lets the implementer rename ALT_SEPARATOR to CANDIDATE_SEPARATOR.
 const CANDIDATE_SEPARATOR = ' · '
 const exported = constants as Record<string, unknown>
 
@@ -41,7 +40,7 @@ describe('UI text constants', () => {
   })
 
   it('exports the " · " candidate separator', () => {
-    expect(exported.CANDIDATE_SEPARATOR ?? exported.ALT_SEPARATOR).toBe(CANDIDATE_SEPARATOR)
+    expect(exported.CANDIDATE_SEPARATOR).toBe(CANDIDATE_SEPARATOR)
   })
 })
 
@@ -92,4 +91,54 @@ it('keeps the copy reset delay and labels out of src/lib/clipboard.ts', () => {
   for (const text of ['Copied', 'Copy it below']) {
     expect(clipboard).not.toContain(text)
   }
+})
+
+// PLAN-005 T2: every class name the components use is a constant. Values are
+// written out so the test checks them rather than echoing src/constants.ts.
+const CLASS_CONSTANTS = {
+  BUSY_CLASS: 'busy',
+  MESSAGE_CLASS: 'msg',
+  MESSAGE_ERROR_CLASS: 'msg err',
+  SUBTITLE_CLASS: 'sub',
+  FADER_CLASS: 'fader',
+  CARD_CLASS: 'card',
+  TRACK_CLASS: 'track',
+  TITLE_CLASS: 'title',
+  ARTIST_CLASS: 'artist',
+  CANDIDATES_CLASS: 'candidates',
+  PRIMARY_BUTTON_CLASS: 'primary',
+  GHOST_BUTTON_CLASS: 'ghost',
+  SHARE_BUTTON_CLASS: 'share',
+}
+
+// The body of each `className={…}` expression, braces balanced.
+const classNameExpressions = (text: string) => {
+  const found: string[] = []
+  const opener = 'className={'
+  for (let at = text.indexOf(opener); at !== -1; at = text.indexOf(opener, at + 1)) {
+    let depth = 1
+    let end = at + opener.length
+    for (; end < text.length && depth > 0; end++) {
+      if (text[end] === '{') depth++
+      if (text[end] === '}') depth--
+    }
+    found.push(text.slice(at + opener.length, end - 1))
+  }
+  return found
+}
+
+describe('class name constants', () => {
+  it.each(Object.entries(CLASS_CONSTANTS))('exports %s', (name, value) => {
+    expect(exported[name]).toBe(value)
+  })
+})
+
+describe.each(COMPONENT_FILES)('%s class names', (file) => {
+  it('has no string-literal className attribute', () => {
+    expect(source(file)).not.toMatch(/className="/)
+  })
+
+  it('has no quoted string inside a className expression', () => {
+    expect(classNameExpressions(source(file)).filter((expr) => /['"`]/.test(expr))).toEqual([])
+  })
 })
