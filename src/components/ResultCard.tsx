@@ -1,13 +1,18 @@
 import { useId, useRef } from 'react'
 import {
   APP_LINK_CLASS,
+  ARTIST_CLASS,
   ARTIST_PICKER_LABEL,
+  CANDIDATES_CLASS,
   CANDIDATE_SEPARATOR,
+  CARD_CLASS,
   COPY_LABEL,
   FALLBACK_TEXTAREA_LABEL,
   FALLBACK_TEXTAREA_ROWS,
+  GHOST_BUTTON_CLASS,
   PLATFORMS,
   PLATFORM_SPOTIFY,
+  SHARE_BUTTON_CLASS,
   SHARE_LABEL,
   SPOTIFY_APP_SEARCH_LABEL,
   TAG_CLASS,
@@ -16,6 +21,8 @@ import {
   TAG_LIKELY,
   TAG_LIKELY_CLASS,
   TAG_SEARCH,
+  TITLE_CLASS,
+  TRACK_CLASS,
 } from '../constants'
 import { shareText } from '../lib/share'
 import type { ArtistCandidate, Conversion, Platform } from '../lib/types'
@@ -38,12 +45,12 @@ export default function ResultCard({ conversion, onChooseArtist }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null)
 
   return (
-    <section className="card">
-      <div className="track">
+    <section className={CARD_CLASS}>
+      <div className={TRACK_CLASS}>
         {art && <img src={art} alt="" />}
         <div>
-          <div className="title">{title}</div>
-          <div className="artist">{artist}</div>
+          <div className={TITLE_CLASS}>{title}</div>
+          <div className={ARTIST_CLASS}>{artist}</div>
         </div>
       </div>
       <ul>
@@ -61,14 +68,14 @@ export default function ResultCard({ conversion, onChooseArtist }: Props) {
             <CopyButton
               text={links[key]}
               label={COPY_LABEL}
-              className="ghost"
+              className={GHOST_BUTTON_CLASS}
               fallbackRef={fallbackRef}
             />
           </li>
         ))}
       </ul>
       {candidates?.length ? (
-        <div className="candidates" role="group" aria-labelledby={pickerLabelId}>
+        <div className={CANDIDATES_CLASS} role="group" aria-labelledby={pickerLabelId}>
           <span id={pickerLabelId}>{ARTIST_PICKER_LABEL}</span>
           {candidates.map((candidate) => (
             <button
@@ -85,7 +92,7 @@ export default function ResultCard({ conversion, onChooseArtist }: Props) {
       <CopyButton
         text={shareText(conversion)}
         label={SHARE_LABEL}
-        className="share"
+        className={SHARE_BUTTON_CLASS}
         fallbackRef={fallbackRef}
       />
       <textarea
