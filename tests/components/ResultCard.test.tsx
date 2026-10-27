@@ -10,11 +10,11 @@ import {
   RESET_MS,
   advance,
   clickAndSettle,
-  expectedShareText,
   selectedText,
   stubClipboard,
   stubExecCommand,
 } from '../support/clipboard'
+import { expectedShareText } from '../support/cases'
 import { expectNotShown, isShown, resultRow as row } from '../support/dom'
 
 // AC11 (result card) and AC13 (copy and share), from a Conversion prop.

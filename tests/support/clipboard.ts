@@ -15,19 +15,6 @@ export const FALLBACK_LABEL = 'Text to copy'
 export const selectedText = (box: HTMLTextAreaElement): string =>
   box.value.slice(box.selectionStart, box.selectionEnd)
 
-// The AC7 share text, written out so tests state the format themselves.
-export const expectedShareText = (
-  head: string,
-  links: { apple: string; spotify: string; ytm: string },
-): string =>
-  [
-    head,
-    '',
-    `Apple Music: ${links.apple}`,
-    `Spotify: ${links.spotify}`,
-    `YouTube Music: ${links.ytm}`,
-  ].join('\n')
-
 // 'ok' resolves, 'blocked' rejects as a denied permission does, 'missing'
 // leaves navigator.clipboard undefined as an insecure context does.
 export type ClipboardOutcome = 'ok' | 'blocked' | 'missing'

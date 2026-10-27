@@ -14,7 +14,8 @@ import {
   mockFetchOnly,
   mockJsonp,
 } from './support/network'
-import { expectedShareText, stubClipboard } from './support/clipboard'
+import { expectedShareText } from './support/cases'
+import { stubClipboard } from './support/clipboard'
 import { expectNotShown, resultRow as row } from './support/dom'
 
 // AC11 (convert UI) and AC13 (copy and share), plus PLAN-002 AC5–AC7 (honest
