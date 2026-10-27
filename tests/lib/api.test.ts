@@ -3,7 +3,7 @@ import { jsonp, lookupLink } from '../../src/lib/api'
 import { spotifyAppSearchUri, withSearchFallbacks } from '../../src/lib/links'
 import {
   fromItunesLookup,
-  fromSpotifyFallback,
+  fromSpotifyOembed,
   itunesLookupUrl,
   itunesSearchUrl,
   spotifyOembedUrl,
@@ -302,7 +302,7 @@ describe('lookupLink', () => {
       const { conversion } = await lookupLink(SPOTIFY_TRACK)
       expect(conversion).toEqual(
         withSearchFallbacks(
-          fromSpotifyFallback(
+          fromSpotifyOembed(
             fixture('spotify-oembed-track.json'),
             fixture('itunes-search-songs.json'),
             SPOTIFY_TRACK,
@@ -321,7 +321,7 @@ describe('lookupLink', () => {
       spotifyCase(answerJson(fixture('spotify-oembed-track.json')), 'error')
       const { conversion } = await lookupLink(SPOTIFY_TRACK)
       expect(conversion).toEqual(
-        withSearchFallbacks(fromSpotifyFallback(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK)),
+        withSearchFallbacks(fromSpotifyOembed(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK)),
       )
       expect(conversion?.exact.apple).toBe(false)
     })
