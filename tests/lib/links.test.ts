@@ -6,9 +6,8 @@ import {
   withArtistChoice,
   withSearchFallbacks,
 } from '../../src/lib/links'
-import type { ArtistCandidate, Lookup } from '../../src/lib/types'
-
-const TRACK_ID = '4u7EnebtmKWzUH433cf5Qv'
+import type { Lookup } from '../../src/lib/types'
+import { APPLE_TRACK, REPORTED, REPORTED_CANDIDATES, REPORTED_THUMB, SPOTIFY_TRACK } from '../support/cases'
 
 describe('searchUrl', () => {
   it('builds a Spotify search URL with the query URI-encoded', () => {
@@ -76,8 +75,8 @@ describe('spotifyAppSearchUri', () => {
 
 describe('withSearchFallbacks', () => {
   const exactLinks = {
-    apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
-    spotify: `https://open.spotify.com/track/${TRACK_ID}`,
+    apple: APPLE_TRACK.link,
+    spotify: SPOTIFY_TRACK.link,
     ytm: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
   }
 
@@ -254,55 +253,36 @@ describe('withSearchFallbacks', () => {
 })
 
 describe('withArtistChoice', () => {
-  // The reported Spotify fallback: no artist, Spotify exact, Apple and
+  // The reported Spotify result: no artist, Spotify exact, Apple and
   // YouTube Music searches for the title alone.
-  const SPOTIFY_LINK = 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb'
-  const ART = 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02a1b2c3d4e5f60718293a4b5c'
-  const CANDIDATES: ArtistCandidate[] = [
-    {
-      artist: 'Samuel Cody Matson',
-      title: "Ain't Gettin' High",
-      url: 'https://music.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680',
-    },
-    {
-      artist: 'The Neon Prairie Dogs',
-      title: "Ain't Gettin' High",
-      url: 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571',
-    },
-    {
-      artist: 'Zach Bryan',
-      title: 'Younger Years',
-      url: 'https://music.apple.com/us/album/younger-years/1640014741?i=1640014759',
-    },
-  ]
-  const [MATSON, NEON] = CANDIDATES
-  const fallback = () =>
+  const [MATSON, NEON] = REPORTED_CANDIDATES
+  const reported = () =>
     withSearchFallbacks({
       title: "Ain't Gettin' High",
       artist: '',
-      art: ART,
-      links: { spotify: SPOTIFY_LINK },
-      candidates: CANDIDATES,
+      art: REPORTED_THUMB,
+      links: { spotify: REPORTED.link },
+      candidates: REPORTED_CANDIDATES,
     })
 
   it("sets the artist to the candidate's artist", () => {
-    expect(withArtistChoice(fallback(), NEON).artist).toBe('The Neon Prairie Dogs')
+    expect(withArtistChoice(reported(), NEON).artist).toBe('The Neon Prairie Dogs')
   })
 
   it("makes the candidate's URL the Apple link and marks it exact", () => {
-    const result = withArtistChoice(fallback(), NEON)
+    const result = withArtistChoice(reported(), NEON)
     expect(result.links.apple).toBe(NEON.url)
     expect(result.exact.apple).toBe(true)
   })
 
   it('keeps the exact Spotify link', () => {
-    const result = withArtistChoice(fallback(), NEON)
-    expect(result.links.spotify).toBe(SPOTIFY_LINK)
+    const result = withArtistChoice(reported(), NEON)
+    expect(result.links.spotify).toBe(REPORTED.link)
     expect(result.exact.spotify).toBe(true)
   })
 
   it('rebuilds the YouTube Music search for "title artist" and keeps it not exact', () => {
-    const result = withArtistChoice(fallback(), NEON)
+    const result = withArtistChoice(reported(), NEON)
     expect(result.links.ytm).toBe(
       "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
     )
@@ -310,7 +290,7 @@ describe('withArtistChoice', () => {
   })
 
   it('leaves the Spotify app search URI undefined because Spotify stays exact', () => {
-    const result = withArtistChoice(fallback(), NEON)
+    const result = withArtistChoice(reported(), NEON)
     expect(result.spotifyAppSearch).toBeUndefined()
   })
 
@@ -321,7 +301,7 @@ describe('withArtistChoice', () => {
         title: "Ain't Gettin' High",
         artist: '',
         links: { ytm: 'https://music.youtube.com/watch?v=abc' },
-        candidates: CANDIDATES,
+        candidates: REPORTED_CANDIDATES,
       })
 
     it('rebuilds the Spotify app search URI with the chosen artist', () => {
@@ -353,8 +333,8 @@ describe('withArtistChoice', () => {
     const conversion = withSearchFallbacks({
       title: 'Song',
       artist: '',
-      links: { spotify: SPOTIFY_LINK, ytm: 'https://music.youtube.com/watch?v=abc' },
-      candidates: CANDIDATES,
+      links: { spotify: REPORTED.link, ytm: 'https://music.youtube.com/watch?v=abc' },
+      candidates: REPORTED_CANDIDATES,
     })
     const result = withArtistChoice(conversion, NEON)
     expect(result.links.ytm).toBe('https://music.youtube.com/watch?v=abc')
@@ -362,25 +342,25 @@ describe('withArtistChoice', () => {
   })
 
   it('keeps the title, artwork and candidates in the same order', () => {
-    const result = withArtistChoice(fallback(), NEON)
+    const result = withArtistChoice(reported(), NEON)
     expect(result.title).toBe("Ain't Gettin' High")
-    expect(result.art).toBe(ART)
-    expect(result.candidates).toEqual(CANDIDATES)
+    expect(result.art).toBe(REPORTED_THUMB)
+    expect(result.candidates).toEqual(REPORTED_CANDIDATES)
   })
 
   it('switches every chosen value when a second candidate is chosen', () => {
-    const result = withArtistChoice(withArtistChoice(fallback(), NEON), MATSON)
+    const result = withArtistChoice(withArtistChoice(reported(), NEON), MATSON)
     expect(result.artist).toBe('Samuel Cody Matson')
     expect(result.links.apple).toBe(MATSON.url)
     expect(result.exact.apple).toBe(true)
     expect(result.links.ytm).toBe(
       "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20Samuel%20Cody%20Matson",
     )
-    expect(result.candidates).toEqual(CANDIDATES)
+    expect(result.candidates).toEqual(REPORTED_CANDIDATES)
   })
 
   it('returns a new conversion and does not mutate the one it is given', () => {
-    const conversion = fallback()
+    const conversion = reported()
     const before = structuredClone(conversion)
     const result = withArtistChoice(conversion, NEON)
     expect(conversion).toEqual(before)
@@ -394,9 +374,9 @@ describe('withArtistChoice', () => {
       withSearchFallbacks({
         title: "Ain't Gettin' High",
         artist: NEON.artist,
-        art: ART,
-        links: { spotify: SPOTIFY_LINK, apple: NEON.url },
-        candidates: CANDIDATES,
+        art: REPORTED_THUMB,
+        links: { spotify: REPORTED.link, apple: NEON.url },
+        candidates: REPORTED_CANDIDATES,
         likely: { apple: true },
       })
 
@@ -432,7 +412,7 @@ describe('withArtistChoice', () => {
 
     it('keeps the exact Spotify link', () => {
       const result = withArtistChoice(autoPicked(), MATSON)
-      expect(result.links.spotify).toBe(SPOTIFY_LINK)
+      expect(result.links.spotify).toBe(REPORTED.link)
       expect(result.exact.spotify).toBe(true)
     })
 
@@ -444,6 +424,6 @@ describe('withArtistChoice', () => {
   })
 
   it('marks nothing likely after a choice from a result with no auto-pick', () => {
-    expect(withArtistChoice(fallback(), NEON).likely).toEqual({ apple: false, spotify: false, ytm: false })
+    expect(withArtistChoice(reported(), NEON).likely).toEqual({ apple: false, spotify: false, ytm: false })
   })
 })

@@ -7,35 +7,18 @@ import {
   resolveSpotifyShortLink,
   spotifyOembedUrl,
 } from '../../src/lib/lookup'
-import type { ParsedLink } from '../../src/lib/types'
+import {
+  APPLE_ALBUM,
+  APPLE_TRACK,
+  REPORTED,
+  REPORTED_CANDIDATES,
+  REPORTED_THUMB,
+  SPOTIFY_ALBUM,
+  SPOTIFY_TRACK,
+  UNIQUE,
+  UNIQUE_CANDIDATES,
+} from '../support/cases'
 import { fixture } from '../support/fixtures'
-
-const SPOTIFY_TRACK: ParsedLink = {
-  src: 'spotify',
-  kind: 'track',
-  id: '4u7EnebtmKWzUH433cf5Qv',
-  link: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
-}
-const SPOTIFY_ALBUM: ParsedLink = {
-  src: 'spotify',
-  kind: 'album',
-  id: '1GbtB4zTqAsyfZEsm1RZfx',
-  link: 'https://open.spotify.com/album/1GbtB4zTqAsyfZEsm1RZfx',
-}
-const APPLE_TRACK: ParsedLink = {
-  src: 'apple',
-  kind: 'track',
-  id: '1440806768',
-  slug: 'bohemian rhapsody',
-  link: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
-}
-const APPLE_ALBUM: ParsedLink = {
-  src: 'apple',
-  kind: 'album',
-  id: '1440806041',
-  slug: 'a night at the opera 2011 remaster',
-  link: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
-}
 
 const ARTWORK_100 =
   'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/100x100bb.jpg'
@@ -165,33 +148,8 @@ describe('itunesSearchUrl', () => {
 })
 
 describe('fromSpotifyOembed', () => {
-  // The reported case: oEmbed has no artist, and the iTunes
-  // title search returns several artists.
-  const REPORTED: ParsedLink = {
-    src: 'spotify',
-    kind: 'track',
-    id: '1yQDTSOyfVTCt9XWKQcnXb',
-    link: 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb',
-  }
-  const REPORTED_THUMB =
-    'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02a1b2c3d4e5f60718293a4b5c'
-  const REPORTED_CANDIDATES = [
-    {
-      artist: 'Samuel Cody Matson',
-      title: "Ain't Gettin' High",
-      url: 'https://music.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680',
-    },
-    {
-      artist: 'The Neon Prairie Dogs',
-      title: "Ain't Gettin' High",
-      url: 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571',
-    },
-    {
-      artist: 'Zach Bryan',
-      title: 'Younger Years',
-      url: 'https://music.apple.com/us/album/younger-years/1640014741?i=1640014759',
-    },
-  ]
+  // The reported case: oEmbed has no artist, and the iTunes title search
+  // returns several artists.
   const reported = () =>
     fromSpotifyOembed(
       fixture('spotify-oembed-aint-gettin-high.json'),
@@ -207,27 +165,8 @@ describe('fromSpotifyOembed', () => {
     collectionViewUrl: trackViewUrl,
   })
 
-  it('takes the title and artwork from oEmbed and the Spotify link from the parsed link', () => {
-    const lookup = reported()
-    expect(lookup.title).toBe("Ain't Gettin' High")
-    expect(lookup.art).toBe(REPORTED_THUMB)
-    expect(lookup.links.spotify).toBe(REPORTED.link)
-  })
-
-  it('leaves the artist blank in the reported case instead of using the top iTunes hit', () => {
-    expect(reported().artist).toBe('')
-  })
-
-  it('gives no Apple link in the reported case, only the Spotify link', () => {
-    expect(reported().links).toEqual({ spotify: REPORTED.link })
-  })
-
   // PLAN-004 AC3/AC6: Matson and the Neon Prairie Dogs both have the title,
-  // so nothing is auto-picked.
-  it('marks nothing LIKELY in the reported case, where two artists have the title', () => {
-    expect(reported().likely).toBeUndefined()
-  })
-
+  // so nothing is auto-picked: no artist, no Apple link, nothing likely.
   it('returns the oEmbed title and art, a blank artist, the Spotify link and the candidates', () => {
     expect(reported()).toEqual({
       title: "Ain't Gettin' High",
@@ -236,10 +175,6 @@ describe('fromSpotifyOembed', () => {
       links: { spotify: REPORTED.link },
       candidates: REPORTED_CANDIDATES,
     })
-  })
-
-  it('offers one candidate per artist in first-appearance order in the reported case', () => {
-    expect(reported().candidates).toEqual(REPORTED_CANDIDATES)
   })
 
   it("keeps each artist's first result, not a later release or live version", () => {
@@ -369,29 +304,10 @@ describe('fromSpotifyOembed', () => {
   // PLAN-004 AC5: exactly one artist has a result whose cleaned title is the
   // oEmbed title's, so that artist is pre-selected and Apple tagged LIKELY.
   describe('with exactly one artist whose title matches', () => {
-    const UNIQUE: ParsedLink = {
-      src: 'spotify',
-      kind: 'track',
-      id: '3kVr8XqPz2LmNw7TyB5hJd',
-      link: 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd',
-    }
     const UNIQUE_THUMB =
       'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02f0e1d2c3b4a5968778695a4b'
     const MARLOW_MATCH_URL =
       'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329'
-    const UNIQUE_CANDIDATES = [
-      { artist: 'Marlow Vance', title: 'Rollin Down to Memphis', url: MARLOW_MATCH_URL },
-      {
-        artist: 'The Dust Bowl Choir',
-        title: "Rollin' Down To Memphis (Live)",
-        url: 'https://music.apple.com/us/album/rollin-down-to-memphis-live/1623456780?i=1623456791',
-      },
-      {
-        artist: 'Harper Lane',
-        title: 'Midnight Ferry',
-        url: 'https://music.apple.com/us/album/midnight-ferry/1645678900?i=1645678912',
-      },
-    ]
     const unique = () =>
       fromSpotifyOembed(
         fixture('spotify-oembed-unique-match.json'),
@@ -410,25 +326,6 @@ describe('fromSpotifyOembed', () => {
       })
     })
 
-    it('sets the artist to the only artist with a matching title', () => {
-      expect(unique().artist).toBe('Marlow Vance')
-    })
-
-    it("links Apple Music to that artist's matching result on music.apple.com without &uo=", () => {
-      const { apple } = unique().links
-      expect(apple).toBe(MARLOW_MATCH_URL)
-      expect(new URL(apple!).hostname).toBe('music.apple.com')
-      expect(apple).not.toContain('uo=')
-    })
-
-    it('marks only the Apple link likely', () => {
-      expect(unique().likely).toEqual({ apple: true })
-    })
-
-    it('keeps the canonical Spotify link', () => {
-      expect(unique().links.spotify).toBe(UNIQUE.link)
-    })
-
     it('keeps the original oEmbed title, not the cleaned one', () => {
       expect(unique().title).toBe("Rollin' Down To Memphis - Remastered 2015")
     })
@@ -436,10 +333,6 @@ describe('fromSpotifyOembed', () => {
     it("keeps an artist's first matching result as its candidate when its first result does not match", () => {
       const marlow = unique().candidates?.find((c) => c.artist === 'Marlow Vance')
       expect(marlow).toEqual({ artist: 'Marlow Vance', title: 'Rollin Down to Memphis', url: MARLOW_MATCH_URL })
-    })
-
-    it("keeps each other artist's first result as its candidate", () => {
-      expect(unique().candidates).toEqual(UNIQUE_CANDIDATES)
     })
 
     it('counts two matching results by the same artist as one artist', () => {
