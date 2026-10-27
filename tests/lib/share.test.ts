@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { withSearchFallbacks } from '../../src/lib/links'
-import { fromSpotifyFallback } from '../../src/lib/lookup'
+import { fromSpotifyOembed } from '../../src/lib/lookup'
 import { shareText } from '../../src/lib/share'
 import { fixture } from '../support/fixtures'
 
@@ -59,7 +59,7 @@ describe('shareText', () => {
     const UNIQUE_LINK = 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd'
     const autoPicked = () =>
       withSearchFallbacks(
-        fromSpotifyFallback(
+        fromSpotifyOembed(
           fixture('spotify-oembed-unique-match.json'),
           fixture('itunes-search-unique-match.json'),
           { src: 'spotify', kind: 'track', id: '3kVr8XqPz2LmNw7TyB5hJd', link: UNIQUE_LINK },

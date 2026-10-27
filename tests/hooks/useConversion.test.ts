@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { useConversion } from '../../src/hooks/useConversion'
 import { withSearchFallbacks } from '../../src/lib/links'
-import { fromSpotifyFallback, spotifyOembedUrl } from '../../src/lib/lookup'
+import { fromSpotifyOembed, spotifyOembedUrl } from '../../src/lib/lookup'
 import type { ArtistCandidate, ParsedLink } from '../../src/lib/types'
 import { fixture } from '../support/fixtures'
 import {
@@ -50,7 +50,7 @@ const itunesSearch = (src: string) => ({
 // What a Spotify track lookup gives with the track oEmbed and the songs search.
 const SPOTIFY_TRACK_RESULT = () =>
   withSearchFallbacks(
-    fromSpotifyFallback(
+    fromSpotifyOembed(
       fixture('spotify-oembed-track.json'),
       fixture('itunes-search-songs.json'),
       SPOTIFY_TRACK,

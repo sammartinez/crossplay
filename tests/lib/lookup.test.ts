@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   fromItunesLookup,
-  fromSpotifyFallback,
+  fromSpotifyOembed,
   itunesLookupUrl,
   itunesSearchUrl,
   resolveSpotifyShortLink,
@@ -164,7 +164,7 @@ describe('itunesSearchUrl', () => {
   })
 })
 
-describe('fromSpotifyFallback', () => {
+describe('fromSpotifyOembed', () => {
   // The reported case: oEmbed has no artist, and the iTunes
   // title search returns several artists.
   const REPORTED: ParsedLink = {
@@ -193,7 +193,7 @@ describe('fromSpotifyFallback', () => {
     },
   ]
   const reported = () =>
-    fromSpotifyFallback(
+    fromSpotifyOembed(
       fixture('spotify-oembed-aint-gettin-high.json'),
       fixture('itunes-search-aint-gettin-high.json'),
       REPORTED,
@@ -258,7 +258,7 @@ describe('fromSpotifyFallback', () => {
   })
 
   it('treats artist names that differ only in case or surrounding spaces as one artist', () => {
-    const lookup = fromSpotifyFallback(
+    const lookup = fromSpotifyOembed(
       fixture('spotify-oembed-track.json'),
       {
         results: [
@@ -281,7 +281,7 @@ describe('fromSpotifyFallback', () => {
   })
 
   it('skips results with an empty artist name', () => {
-    const lookup = fromSpotifyFallback(
+    const lookup = fromSpotifyOembed(
       fixture('spotify-oembed-track.json'),
       {
         results: [
@@ -297,7 +297,7 @@ describe('fromSpotifyFallback', () => {
   })
 
   it('skips results with no Apple URL', () => {
-    const lookup = fromSpotifyFallback(
+    const lookup = fromSpotifyOembed(
       fixture('spotify-oembed-track.json'),
       {
         results: [
@@ -317,7 +317,7 @@ describe('fromSpotifyFallback', () => {
   })
 
   it('uses the collection name and collection URL for album candidates', () => {
-    const lookup = fromSpotifyFallback(
+    const lookup = fromSpotifyOembed(
       fixture('spotify-oembed-album.json'),
       fixture('itunes-search-albums.json'),
       SPOTIFY_ALBUM,
@@ -333,7 +333,7 @@ describe('fromSpotifyFallback', () => {
 
   // PLAN-004 AC6: album links follow the same rule against album results.
   it('auto-picks Queen as LIKELY for the album link, whose only album result has the same title', () => {
-    const lookup = fromSpotifyFallback(
+    const lookup = fromSpotifyOembed(
       fixture('spotify-oembed-album.json'),
       fixture('itunes-search-albums.json'),
       SPOTIFY_ALBUM,
@@ -347,7 +347,7 @@ describe('fromSpotifyFallback', () => {
   })
 
   it('gives a blank artist, no Apple link and no candidates when the search finds nothing', () => {
-    const lookup = fromSpotifyFallback(
+    const lookup = fromSpotifyOembed(
       fixture('spotify-oembed-track.json'),
       fixture('itunes-search-empty.json'),
       SPOTIFY_TRACK,
@@ -360,7 +360,7 @@ describe('fromSpotifyFallback', () => {
   })
 
   it('handles a null iTunes body the same as no results', () => {
-    const lookup = fromSpotifyFallback(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK)
+    const lookup = fromSpotifyOembed(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK)
     expect(lookup.artist).toBe('')
     expect(lookup.links).toEqual({ spotify: SPOTIFY_TRACK.link })
     expect(lookup.candidates ?? []).toEqual([])
@@ -393,7 +393,7 @@ describe('fromSpotifyFallback', () => {
       },
     ]
     const unique = () =>
-      fromSpotifyFallback(
+      fromSpotifyOembed(
         fixture('spotify-oembed-unique-match.json'),
         fixture('itunes-search-unique-match.json'),
         UNIQUE,
@@ -443,7 +443,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('counts two matching results by the same artist as one artist', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         fixture('spotify-oembed-unique-match.json'),
         {
           results: [
@@ -465,7 +465,7 @@ describe('fromSpotifyFallback', () => {
     const titled = (title: string) => ({ ...fixture<object>('spotify-oembed-track.json'), title })
 
     it('matches "Aint Gettin High" with the oEmbed title "Ain\'t Gettin\' High"', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         fixture('spotify-oembed-aint-gettin-high.json'),
         {
           results: [
@@ -481,7 +481,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('does not match a "(Live)" version, so a live-only artist is not picked', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         fixture('spotify-oembed-aint-gettin-high.json'),
         {
           results: [
@@ -497,7 +497,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('picks nothing for "Bohemian Rhapsody - Remastered 2011", where Queen and The Petersens both match after cleaning', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         fixture('spotify-oembed-track.json'),
         fixture('itunes-search-songs.json'),
         SPOTIFY_TRACK,
@@ -508,7 +508,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('keeps Queen\'s plain "Bohemian Rhapsody" as its candidate, not "Bohemian Rhapsody (Live Aid)"', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         fixture('spotify-oembed-track.json'),
         fixture('itunes-search-songs.json'),
         SPOTIFY_TRACK,
@@ -528,7 +528,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('picks Queen when its only matching result comes after its "(Live Aid)" result', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         fixture('spotify-oembed-track.json'),
         {
           results: [
@@ -550,7 +550,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('keeps an artist\'s first result as its candidate when none of its results match', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         fixture('spotify-oembed-track.json'),
         {
           results: [
@@ -571,7 +571,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('picks nothing when no artist has a matching title', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         fixture('spotify-oembed-track.json'),
         {
           results: [
@@ -587,7 +587,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('picks nothing when the oEmbed title is blank, even against a result with no title', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         titled(''),
         {
           results: [
@@ -602,7 +602,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('picks nothing when the oEmbed title is only noise, even against the same title', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         titled('(Remastered)'),
         {
           results: [song('Queen', '(Remastered)', 'https://itunes.apple.com/us/album/a/1?i=11&uo=4')],
@@ -614,7 +614,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('picks nothing when iTunes finds nothing', () => {
-      const lookup = fromSpotifyFallback(
+      const lookup = fromSpotifyOembed(
         fixture('spotify-oembed-track.json'),
         fixture('itunes-search-empty.json'),
         SPOTIFY_TRACK,
@@ -623,7 +623,7 @@ describe('fromSpotifyFallback', () => {
     })
 
     it('picks nothing when the iTunes body is null', () => {
-      expect(fromSpotifyFallback(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK).likely).toBeUndefined()
+      expect(fromSpotifyOembed(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK).likely).toBeUndefined()
     })
   })
 })
