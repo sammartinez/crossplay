@@ -4,8 +4,6 @@ import { vi } from 'vitest'
 // Stand-ins for the two copy APIs jsdom lacks: navigator.clipboard and
 // document.execCommand. setup.ts removes both after each test.
 
-// 'ok' resolves, 'blocked' rejects as a denied permission does, 'missing'
-// leaves navigator.clipboard undefined as an insecure context does.
 // How long a copy button shows "Copied" or "Copy it below" (AC13: 1.4 s).
 // A literal on purpose, so the tests check the value rather than echo it.
 export const RESET_MS = 1400
@@ -30,6 +28,8 @@ export const expectedShareText = (
     `YouTube Music: ${links.ytm}`,
   ].join('\n')
 
+// 'ok' resolves, 'blocked' rejects as a denied permission does, 'missing'
+// leaves navigator.clipboard undefined as an insecure context does.
 export type ClipboardOutcome = 'ok' | 'blocked' | 'missing'
 
 export function stubClipboard(outcome: ClipboardOutcome) {
