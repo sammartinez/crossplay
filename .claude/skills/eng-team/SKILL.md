@@ -85,6 +85,7 @@ Re-capture after every round that changes code.
 
 **f. Iterate.**
 - `approved` → step g2 if the MR needs a Principal second review (see **Routing**), otherwise step h.
+- A blocking comment on a file under `testPaths` (tests, fixtures, test helpers) goes to `qa`, not the author, since the author may not edit QA's files. Resume QA with the review; then gates and re-review as below.
 - `changes-requested` and round < `maxReviewRounds` → status `changes-requested`; resume `MR-NNN-author` with the review path and "address every blocking comment; write `D/response-N.md`." Then gates (d) and re-review (e) by resuming `MR-NNN-reviewer` with the response path. If resuming isn't possible, spawn fresh with the same paths.
 - `changes-requested` at round = `maxReviewRounds` → step g.
 
@@ -147,7 +148,7 @@ Nobody reviews their own work.
 - Never edit product code or tests yourself, and never soften a review. If something is stuck, escalate.
 - Keep commits on MR branches; never commit to `baseBranch` except `.team/` setup, the user-approved final merge, and the `.team/` record after it.
 - Don't commit `.team/` during a run. It stays as working-tree changes so it survives branch switches and the dashboard never shows a stale state. It's committed once, after the final merge.
-- If a subagent stops mid-task (rate limit, API error), resume it with SendMessage instead of re-spawning; it keeps its context. Re-spawn only if resuming fails.
+- If a subagent stops mid-task (rate limit, API error), resume it with SendMessage instead of re-spawning; it keeps its context. Re-spawn only if resuming fails (after a session or worker restart, named agents are gone: check `git status` and the MR branch for partial work, then re-spawn with the same paths).
 - Push MR and integration branches when the session may be reclaimed (cloud sessions); that's not a merge and doesn't break the "no commits to baseBranch" rule. `.team/` still stays uncommitted until the end.
 - If a subagent returns something unusable (no commits, wrong files, malformed review), retry it once with the problem stated; then escalate.
 - Tell the user only at checkpoints, escalations, and the end. Otherwise keep going; the dashboard shows progress. Mention once at the start: open `.team/dashboard.html` to watch.

@@ -1,0 +1,3068 @@
+diff --git a/README.md b/README.md
+index 3e39119..fcff9d7 100644
+--- a/README.md
++++ b/README.md
+@@ -34,6 +34,6 @@ After that, tapping Share → Crossplay on a song converts it right away.
+ 
+ ## How it works
+ 
+-- **Primary lookup:** Odesli (`api.song.link`) returns exact links for all platforms. It's free and needs no API key, but it's limited to about 10 lookups per minute.
+-- **Fallback:** if Odesli fails, the page uses Spotify oEmbed and the iTunes Search API. Links that couldn't be matched exactly open a search on that platform and are tagged SEARCH.
++- **Lookup:** an Apple Music link is looked up with the iTunes Search API. A Spotify link is looked up with Spotify oEmbed, which gives the title and art but no artist, then the iTunes Search API is searched for that title. Both are free and need no API key.
++- **Tags:** the link you pasted is tagged EXACT. The other platforms open a search for the song, tagged SEARCH. oEmbed gives no artist, so for a Spotify link the artist stays blank and the artists the title search found are shown as buttons for you to pick.
+ - **Shareable link:** `?u=<link>` in the address converts that link as soon as the page opens.
+diff --git a/src/constants.ts b/src/constants.ts
+index 55a1917..0e7e9ed 100644
+--- a/src/constants.ts
++++ b/src/constants.ts
+@@ -43,19 +43,6 @@ export const SEARCH_URL_BASES = {
+ // The app scheme opens Spotify's own search; the web search above stays the shared link.
+ export const SPOTIFY_APP_SEARCH_URI = 'spotify:search:'
+ 
+-export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
+-export const ODESLI_COUNTRY = 'US'
+-export const ODESLI_COUNTRY_PARAM = 'userCountry'
+-export const ODESLI_URL_PARAM = 'url'
+-// The linksByPlatform key Odesli uses for each of our platforms.
+-export const ODESLI_PLATFORM_KEYS = {
+-  [PLATFORM_APPLE]: 'appleMusic',
+-  [PLATFORM_SPOTIFY]: 'spotify',
+-  [PLATFORM_YTM]: 'youtubeMusic',
+-} as const
+-// Hop sources in the order Odesli matches them best to other platforms. Never
+-// appleMusic or spotify: those are the links a hop fills.
+-export const ODESLI_HOP_PLATFORMS = ['youtubeMusic', 'youtube', 'deezer', 'tidal', 'amazonMusic'] as const
+ export const OEMBED_URL_PARAM = 'url'
+ 
+ export const ITUNES_HOST = 'itunes.apple.com'
+diff --git a/src/lib/api.ts b/src/lib/api.ts
+index c507d2d..34fbcd1 100644
+--- a/src/lib/api.ts
++++ b/src/lib/api.ts
+@@ -9,24 +9,13 @@ import {
+ import { withSearchFallbacks } from './links'
+ import {
+   fromItunesLookup,
+-  fromOdesli,
+   fromSpotifyFallback,
+   itunesLookupUrl,
+   itunesSearchUrl,
+-  odesliHopUrl,
+-  odesliUrl,
+   resolveSpotifyShortLink,
+   spotifyOembedUrl,
+-  withHopLinks,
+ } from './lookup'
+-import type {
+-  Conversion,
+-  ItunesResponse,
+-  Lookup,
+-  OdesliResponse,
+-  ParsedLink,
+-  SpotifyOembed,
+-} from './types'
++import type { Conversion, ItunesResponse, Lookup, ParsedLink, SpotifyOembed } from './types'
+ 
+ type SourceLookup = { lookup: Lookup | null; parsed: ParsedLink }
+ 
+@@ -87,33 +76,12 @@ async function viaSource(parsed: ParsedLink): Promise<SourceLookup> {
+   return viaSpotify(parsed).catch(() => ({ lookup: null, parsed }))
+ }
+ 
+-// A failed or malformed hop keeps the first response: it already has a title
+-// and links, and the platforms the hop would fill fall back to searches.
+-const withOdesliHop = (first: Lookup, hopUrl: string): Promise<Lookup> =>
+-  fetchJson<OdesliResponse>(hopUrl)
+-    .then((hop) => withHopLinks(first, hop))
+-    .catch(() => first)
+-
+-async function viaOdesliOrSource(parsed: ParsedLink): Promise<SourceLookup> {
+-  const url = odesliUrl(parsed.link)
+-  let first: Lookup
+-  let hopUrl: string | null
+-  try {
+-    const body = await fetchJson<OdesliResponse>(url).catch(() => fetchJson<OdesliResponse>(url))
+-    first = fromOdesli(body)
+-    hopUrl = odesliHopUrl(body)
+-  } catch {
+-    return viaSource(parsed)
+-  }
+-  return { lookup: hopUrl ? await withOdesliHop(first, hopUrl) : first, parsed }
+-}
+-
+ // Resolves on every lookup failure, with a null conversion, so callers need
+ // no rejection path.
+ export async function lookupLink(
+   parsed: ParsedLink,
+ ): Promise<{ conversion: Conversion | null; parsed: ParsedLink }> {
+-  const found = await viaOdesliOrSource(parsed)
++  const found = await viaSource(parsed)
+   return {
+     conversion: found.lookup?.title ? withSearchFallbacks(found.lookup) : null,
+     parsed: found.parsed,
+diff --git a/src/lib/lookup.ts b/src/lib/lookup.ts
+index 2987d2f..75315c3 100644
+--- a/src/lib/lookup.ts
++++ b/src/lib/lookup.ts
+@@ -16,27 +16,18 @@ import {
+   ITUNES_SEARCH_URL,
+   ITUNES_TRACKING_PARAM,
+   KIND_ALBUM,
+-  ODESLI_API_URL,
+-  ODESLI_COUNTRY,
+-  ODESLI_COUNTRY_PARAM,
+-  ODESLI_HOP_PLATFORMS,
+-  ODESLI_PLATFORM_KEYS,
+-  ODESLI_URL_PARAM,
+   OEMBED_URL_PARAM,
+-  PLATFORMS,
+   SPOTIFY_EMBED_RE,
+   SPOTIFY_OEMBED_URL,
+ } from '../constants'
+ import { spotifyParsedLink } from './links'
+-import { sameText, titleCase } from './text'
++import { titleCase } from './text'
+ import { withParams } from './url'
+ import type {
+   ArtistCandidate,
+   ItunesResponse,
+   Kind,
+   Lookup,
+-  OdesliEntity,
+-  OdesliResponse,
+   ParsedLink,
+   SpotifyOembed,
+ } from './types'
+@@ -44,51 +35,6 @@ import type {
+ const itunesEntity = (kind?: Kind): string =>
+   kind === KIND_ALBUM ? ITUNES_ENTITY_ALBUM : ITUNES_ENTITY_SONG
+ 
+-export const odesliUrl = (link: string): string =>
+-  withParams(ODESLI_API_URL, { [ODESLI_COUNTRY_PARAM]: ODESLI_COUNTRY, [ODESLI_URL_PARAM]: link })
+-
+-const odesliEntity = (body: OdesliResponse, id?: string): OdesliEntity | undefined =>
+-  id ? body.entitiesByUniqueId?.[id] : undefined
+-
+-export function fromOdesli(body: OdesliResponse): Lookup {
+-  const entity = odesliEntity(body, body.entityUniqueId)
+-  return {
+-    title: entity?.title,
+-    artist: entity?.artistName,
+-    art: entity?.thumbnailUrl,
+-    links: Object.fromEntries(
+-      PLATFORMS.map(({ key }) => [key, body.linksByPlatform?.[ODESLI_PLATFORM_KEYS[key]]?.url]),
+-    ),
+-  }
+-}
+-
+-export function odesliHopUrl(body: OdesliResponse): string | null {
+-  const { links } = fromOdesli(body)
+-  if (PLATFORMS.every(({ key }) => links[key])) return null
+-  const source = ODESLI_HOP_PLATFORMS.map((p) => body.linksByPlatform?.[p]?.url).find(Boolean)
+-  return source ? odesliUrl(source) : null
+-}
+-
+-// Artists are compared only when both are known; a title match alone is
+-// enough when one side has no artist.
+-function sameSong(first: Lookup, entity?: OdesliEntity): boolean {
+-  if (!first.title || !entity?.title || !sameText(first.title, entity.title)) return false
+-  return !first.artist || !entity.artistName || sameText(first.artist, entity.artistName)
+-}
+-
+-// Each link is judged by its own entity, not the hop's main one: for a YouTube
+-// source that is a video whose artist is a channel name ("X - Topic").
+-export function withHopLinks(first: Lookup, hop: OdesliResponse): Lookup {
+-  const links = { ...first.links }
+-  for (const { key } of PLATFORMS) {
+-    const hopLink = hop.linksByPlatform?.[ODESLI_PLATFORM_KEYS[key]]
+-    if (!links[key] && hopLink && sameSong(first, odesliEntity(hop, hopLink.entityUniqueId))) {
+-      links[key] = hopLink.url
+-    }
+-  }
+-  return { ...first, links }
+-}
+-
+ // Only called for Apple links, which parseLink always gives an id.
+ export const itunesLookupUrl = (p: ParsedLink): string =>
+   withParams(ITUNES_LOOKUP_URL, {
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+index 823f891..e402c0c 100644
+--- a/src/lib/types.ts
++++ b/src/lib/types.ts
+@@ -1,8 +1,6 @@
+ import type {
+   KIND_ALBUM,
+   KIND_TRACK,
+-  ODESLI_HOP_PLATFORMS,
+-  ODESLI_PLATFORM_KEYS,
+   PLATFORM_APPLE,
+   PLATFORM_SPOTIFY,
+   PLATFORMS,
+@@ -38,18 +36,6 @@ export type Conversion = Lookup & {
+ 
+ // Response shapes below list only the fields the mappers read.
+ 
+-export type OdesliEntity = { title?: string; artistName?: string; thumbnailUrl?: string }
+-type OdesliPlatformLink = { url: string; entityUniqueId?: string }
+-type OdesliPlatform =
+-  | (typeof ODESLI_PLATFORM_KEYS)[Platform]
+-  | (typeof ODESLI_HOP_PLATFORMS)[number]
+-
+-export type OdesliResponse = {
+-  entityUniqueId?: string
+-  entitiesByUniqueId?: Record<string, OdesliEntity>
+-  linksByPlatform?: Partial<Record<OdesliPlatform, OdesliPlatformLink>>
+-}
+-
+ type ItunesResult = {
+   trackName?: string
+   collectionName?: string
+diff --git a/tests/App.test.tsx b/tests/App.test.tsx
+index 60d6d47..efc7443 100644
+--- a/tests/App.test.tsx
++++ b/tests/App.test.tsx
+@@ -2,43 +2,51 @@ import { StrictMode } from 'react'
+ import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+ import { describe, expect, it } from 'vitest'
+ import App from '../src/App'
+-import { SPOTIFY_OEMBED_URL } from '../src/constants'
+-import { odesliUrl } from '../src/lib/lookup'
++import { spotifyOembedUrl } from '../src/lib/lookup'
+ import { fixture } from './support/fixtures'
+ import {
+   type Deferred,
++  type FetchAnswer,
+   type JsonpOutcome,
+   deferred,
++  fetchedUrls,
+   jsonResponse,
+-  mockFetch,
++  mockFetchOnly,
+   mockJsonp,
+ } from './support/network'
+ import { expectedShareText, stubClipboard } from './support/clipboard'
+ import { expectNotShown, resultRow as row } from './support/dom'
+ 
+-// AC11 (convert UI) and AC13 (copy and share), plus PLAN-002 AC4–AC7 (Odesli
+-// retry, honest fallback and the artist picker), driven through App's
+-// rendered output with only fetch and the JSONP script load stood in.
++// AC11 (convert UI) and AC13 (copy and share), plus PLAN-002 AC5–AC7 (honest
++// fallback and the artist picker), driven through App's rendered output with
++// only fetch and the JSONP script load stood in.
++// PLAN-004 AC1–AC4, AC9: lookups go straight to oEmbed/iTunes.
+ 
+ const PLACEHOLDER = 'https://open.spotify.com/track/…'
+ const LOOKING_UP_MESSAGE = 'Looking it up…'
+ const INVALID_LINK_MESSAGE = 'That link isn’t a Spotify or Apple Music track or album.'
+ const NOT_FOUND_MESSAGE = 'Couldn’t find that one. Check the link and try again.'
++const APP_LINK_NAME = 'Search in Spotify app'
+ 
+ const SPOTIFY_TRACK_RAW = 'https://open.spotify.com/intl-de/track/4u7EnebtmKWzUH433cf5Qv?si=abc'
+ const SPOTIFY_TRACK_LINK = 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv'
+ const APPLE_SONG_LINK = 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768'
+ const NOT_A_MUSIC_LINK = 'https://example.com/track/123'
+ 
+-// From odesli-track.json
+-const ODESLI_TITLE = 'Bohemian Rhapsody - Remastered 2011'
+-const ODESLI_ART = 'https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a'
+-const ODESLI_LINKS = {
+-  'Apple Music':
+-    'https://geo.music.apple.com/us/album/_/1440806041?i=1440806768&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m',
+-  Spotify: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
+-  'YouTube Music': 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
++// From spotify-oembed-track.json
++const SPOTIFY_TITLE = 'Bohemian Rhapsody - Remastered 2011'
++
++// An Apple song link, from itunes-lookup-song.json.
++const APPLE_TITLE = 'Bohemian Rhapsody'
++const APPLE_ARTIST = 'Queen'
++const APPLE_ART =
++  'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/300x300bb.jpg'
++const APPLE_LINKS = {
++  'Apple Music': APPLE_SONG_LINK,
++  Spotify: 'https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen',
++  'YouTube Music': 'https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen',
+ }
++const APPLE_APP_SEARCH = 'spotify:search:Bohemian%20Rhapsody%20Queen'
+ 
+ // The reported case (PLAN-002 AC5–AC7), from spotify-oembed-aint-gettin-high.json
+ // and itunes-search-aint-gettin-high.json.
+@@ -61,8 +69,6 @@ const NEON_URL = 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i
+ const NEON_YTM_SEARCH =
+   "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs"
+ 
+-const odesliFails = () => jsonResponse({}, 500)
+-
+ const main = () => screen.getByRole('main')
+ const status = () => screen.getByRole('status')
+ const input = () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLInputElement
+@@ -86,25 +92,35 @@ async function waitForIdle() {
+   await waitFor(() => expect(convertButton()).toBeEnabled())
+ }
+ 
+-// Odesli answers every request with odesli-track.json.
+-const odesliTrack = () => mockFetch(() => jsonResponse(fixture('odesli-track.json')))
++// An Apple link: no fetch is expected; the iTunes lookup answers as `itunes` says.
++function appleCase(itunes: JsonpOutcome = { data: fixture('itunes-lookup-song.json') }) {
++  const fetchMock = mockFetchOnly({})
++  const loads = mockJsonp(() => itunes)
++  return { fetchMock, loads }
++}
++
++// The Spotify track link: oEmbed answers as `oembed` says and iTunes search
++// answers with the songs fixture.
++function spotifyCase(oembed: FetchAnswer = () => jsonResponse(fixture('spotify-oembed-track.json'))) {
++  const fetchMock = mockFetchOnly({ [spotifyOembedUrl(SPOTIFY_TRACK_LINK)]: oembed })
++  const loads = mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
++  return { fetchMock, loads }
++}
+ 
+-// Odesli answers 429 every time, oEmbed answers with the reported response,
+-// and iTunes search answers as `itunes` says.
++// oEmbed answers with the reported response, and iTunes search answers as
++// `itunes` says.
+ function reportedCase(itunes: JsonpOutcome = { data: fixture('itunes-search-aint-gettin-high.json') }) {
+-  const fetchMock = mockFetch((url) =>
+-    url.startsWith(SPOTIFY_OEMBED_URL)
+-      ? jsonResponse(fixture('spotify-oembed-aint-gettin-high.json'))
+-      : jsonResponse({}, 429),
+-  )
+-  mockJsonp(() => itunes)
+-  return fetchMock
++  const fetchMock = mockFetchOnly({
++    [spotifyOembedUrl(REPORTED_LINK)]: () => jsonResponse(fixture('spotify-oembed-aint-gettin-high.json')),
++  })
++  const loads = mockJsonp(() => itunes)
++  return { fetchMock, loads }
+ }
+ 
+-// Each fetch waits until the test resolves it.
++// The Spotify track's oEmbed request waits until the test resolves it.
+ function pendingFetch() {
+   const pending: Deferred<Response>[] = []
+-  const fetchMock = mockFetch(() => {
++  const { fetchMock } = spotifyCase(() => {
+     const d = deferred<Response>()
+     pending.push(d)
+     return d.promise
+@@ -150,10 +166,11 @@ describe('App', () => {
+     })
+ 
+     it('shows no result card and makes no request', () => {
+-      const fetchMock = odesliTrack()
++      const { fetchMock, loads } = appleCase()
+       render(<App />)
+       expect(queryPlatformLink('Apple Music')).not.toBeInTheDocument()
+       expect(fetchMock).not.toHaveBeenCalled()
++      expect(loads).toHaveLength(0)
+     })
+ 
+     it('does not mark the page busy', () => {
+@@ -163,32 +180,31 @@ describe('App', () => {
+   })
+ 
+   describe('starting a conversion', () => {
+-    it('looks up the canonical link when the form is submitted', () => {
+-      const fetchMock = odesliTrack()
++    it('looks up the canonical link with oEmbed when the form is submitted', () => {
++      const { fetchMock } = spotifyCase()
+       render(<App />)
+       submit(SPOTIFY_TRACK_RAW)
+-      expect(fetchMock).toHaveBeenCalledTimes(1)
+-      expect(fetchMock.mock.calls[0][0]).toBe(odesliUrl(SPOTIFY_TRACK_LINK))
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
+     })
+ 
+     it('looks up the pasted link one tick after the paste event', async () => {
+-      const fetchMock = odesliTrack()
++      const { fetchMock } = spotifyCase()
+       render(<App />)
+       // The paste event fires before the browser puts the text in the input.
+       fireEvent.paste(input())
+       fireEvent.change(input(), { target: { value: SPOTIFY_TRACK_RAW } })
+       expect(fetchMock).not.toHaveBeenCalled()
+       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+-      expect(fetchMock.mock.calls[0][0]).toBe(odesliUrl(SPOTIFY_TRACK_LINK))
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
+     })
+ 
+     it('shows the result after a paste', async () => {
+-      odesliTrack()
++      spotifyCase()
+       render(<App />)
+       fireEvent.paste(input())
+       fireEvent.change(input(), { target: { value: SPOTIFY_TRACK_RAW } })
+       await waitForResult()
+-      expect(screen.getByText(ODESLI_TITLE)).toBeInTheDocument()
++      expect(screen.getByText(SPOTIFY_TITLE)).toBeInTheDocument()
+     })
+   })
+ 
+@@ -219,51 +235,54 @@ describe('App', () => {
+       const { resolveAll } = pendingFetch()
+       render(<App />)
+       submit(SPOTIFY_TRACK_RAW)
+-      await resolveAll(fixture('odesli-track.json'))
++      await resolveAll(fixture('spotify-oembed-track.json'))
+       await waitForIdle()
+       expect(main()).not.toHaveClass('busy')
+       expect(status().textContent).toBe('')
+     })
+   })
+ 
+-  describe('the result card', () => {
+-    it('shows the title and the artist', async () => {
+-      odesliTrack()
++  describe('the result card for an Apple link', () => {
++    it('makes one iTunes lookup and no fetch', async () => {
++      const { fetchMock, loads } = appleCase()
+       render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
++      submit(APPLE_SONG_LINK)
++      await waitForResult()
++      expect(fetchMock).not.toHaveBeenCalled()
++      expect(loads).toHaveLength(1)
++    })
++
++    it('shows the title and the artist from the iTunes lookup', async () => {
++      appleCase()
++      render(<App />)
++      submit(APPLE_SONG_LINK)
+       await waitForResult()
+-      expect(screen.getByText(ODESLI_TITLE)).toBeInTheDocument()
+-      expect(screen.getByText('Queen')).toBeInTheDocument()
++      expect(screen.getByText(APPLE_TITLE)).toBeInTheDocument()
++      expect(screen.getByText(APPLE_ARTIST)).toBeInTheDocument()
+     })
+ 
+     it('shows the artwork when there is one', async () => {
+-      odesliTrack()
++      appleCase()
+       render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
++      submit(APPLE_SONG_LINK)
+       await waitForResult()
+-      expect(artwork()).toHaveAttribute('src', ODESLI_ART)
++      expect(artwork()).toHaveAttribute('src', APPLE_ART)
+       expect(artwork()).toBeVisible()
+     })
+ 
+     it('hides the artwork when there is none', async () => {
+-      mockFetch(() =>
+-        jsonResponse({
+-          entityUniqueId: 'X',
+-          entitiesByUniqueId: { X: { title: 'No Art Song', artistName: 'Someone' } },
+-          linksByPlatform: {},
+-        }),
+-      )
++      appleCase({ data: fixture('itunes-lookup-empty.json') })
+       render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
++      submit(APPLE_SONG_LINK)
+       await waitForResult()
+       const img = artwork()
+       expectNotShown(img)
+     })
+ 
+     it('shows one row per platform in Apple Music, Spotify, YouTube Music order', async () => {
+-      odesliTrack()
++      appleCase()
+       render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
++      submit(APPLE_SONG_LINK)
+       await waitForResult()
+       const names = screen
+         .getAllByRole('listitem')
+@@ -271,44 +290,61 @@ describe('App', () => {
+       expect(names).toEqual(['Apple Music', 'Spotify', 'YouTube Music'])
+     })
+ 
+-    it.each(Object.entries(ODESLI_LINKS))('links %s to its converted URL', async (name, href) => {
+-      odesliTrack()
++    it.each(Object.entries(APPLE_LINKS))('links %s to its converted URL', async (name, href) => {
++      appleCase()
+       render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
++      submit(APPLE_SONG_LINK)
+       await waitForResult()
+       expect(platformLink(name)).toHaveAttribute('href', href)
+     })
+ 
+-    it.each(Object.keys(ODESLI_LINKS))(
++    it.each(Object.keys(APPLE_LINKS))(
+       'opens the %s link in a new tab with rel="noopener"',
+       async (name) => {
+-        odesliTrack()
++        appleCase()
+         render(<App />)
+-        submit(SPOTIFY_TRACK_RAW)
++        submit(APPLE_SONG_LINK)
+         await waitForResult()
+         expect(platformLink(name)).toHaveAttribute('target', '_blank')
+         expect(platformLink(name)).toHaveAttribute('rel', 'noopener')
+       },
+     )
+ 
+-    it('tags every row EXACT when every platform has an exact link', async () => {
+-      odesliTrack()
++    it('tags Apple Music EXACT and Spotify and YouTube Music SEARCH', async () => {
++      appleCase()
+       render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
++      submit(APPLE_SONG_LINK)
+       await waitForResult()
+-      for (const name of Object.keys(ODESLI_LINKS)) {
+-        expect(within(row(name)).getByText('EXACT')).toBeInTheDocument()
+-        expect(within(row(name)).queryByText('SEARCH')).not.toBeInTheDocument()
+-      }
++      expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
++      expect(within(row('Spotify')).getByText('SEARCH')).toBeInTheDocument()
++      expect(within(row('Spotify')).queryByText('EXACT')).not.toBeInTheDocument()
++      expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
++      expect(within(row('YouTube Music')).queryByText('EXACT')).not.toBeInTheDocument()
++    })
++
++    it('shows the "Search in Spotify app" link for "title artist"', async () => {
++      appleCase()
++      render(<App />)
++      submit(APPLE_SONG_LINK)
++      await waitForResult()
++      expect(platformLink(APP_LINK_NAME)).toHaveAttribute('href', APPLE_APP_SEARCH)
++    })
++
++    it('shows no artist picker', async () => {
++      appleCase()
++      render(<App />)
++      submit(APPLE_SONG_LINK)
++      await waitForResult()
++      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+     })
+ 
+-    it('tags rows without an exact link SEARCH and links them to a search', async () => {
+-      // Odesli fails and the iTunes lookup fails: only the Apple link is exact.
+-      mockFetch(() => odesliFails())
+-      mockJsonp(() => 'error')
++    it('uses the slug as the title and a blank artist when the iTunes lookup fails', async () => {
++      appleCase('error')
+       render(<App />)
+       submit(APPLE_SONG_LINK)
+       await waitForResult()
++      expect(screen.getByText(APPLE_TITLE)).toBeInTheDocument()
++      expect(screen.queryByText(APPLE_ARTIST)).not.toBeInTheDocument()
+       expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
+       expect(within(row('Spotify')).getByText('SEARCH')).toBeInTheDocument()
+       expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
+@@ -327,25 +363,33 @@ describe('App', () => {
+       expect(status()).toHaveClass('err')
+     })
+ 
+-    it('shows the not-found message with the error style when nothing is found', async () => {
+-      mockFetch(() => jsonResponse(fixture('odesli-empty.json')))
+-      render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
+-      await waitFor(() => expect(status()).toHaveTextContent(NOT_FOUND_MESSAGE))
+-      expect(status()).toHaveClass('err')
+-      expect(main()).not.toHaveClass('busy')
+-      expect(convertButton()).toBeEnabled()
+-    })
++    it.each([
++      ['answers 404', () => jsonResponse({}, 404)],
++      ['fails to fetch', () => Promise.reject(new TypeError('Failed to fetch'))],
++    ] as [string, FetchAnswer][])(
++      'shows the not-found message with the error style when oEmbed %s',
++      async (_, oembed) => {
++        const { fetchMock, loads } = spotifyCase(oembed)
++        render(<App />)
++        submit(SPOTIFY_TRACK_RAW)
++        await waitFor(() => expect(status()).toHaveTextContent(NOT_FOUND_MESSAGE))
++        expect(status()).toHaveClass('err')
++        expect(main()).not.toHaveClass('busy')
++        expect(convertButton()).toBeEnabled()
++        expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
++        expect(loads).toHaveLength(0)
++      },
++    )
+ 
+     it('hides the result card from an earlier conversion', async () => {
+-      odesliTrack()
++      appleCase()
+       render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
++      submit(APPLE_SONG_LINK)
+       await waitForResult()
+       submit(NOT_A_MUSIC_LINK)
+       expect(status()).toHaveClass('err')
+       expect(queryPlatformLink('Apple Music')).not.toBeInTheDocument()
+-      expect(screen.queryByText(ODESLI_TITLE)).not.toBeInTheDocument()
++      expect(screen.queryByText(APPLE_TITLE)).not.toBeInTheDocument()
+     })
+ 
+     it('drops the error style once a new lookup starts', () => {
+@@ -367,25 +411,36 @@ describe('App', () => {
+     })
+ 
+     it('converts the link automatically', async () => {
+-      const fetchMock = odesliTrack()
++      const { fetchMock } = spotifyCase()
+       openWithShareParam(SPOTIFY_TRACK_RAW)
+       render(<App />)
+       await waitForResult()
+-      expect(fetchMock.mock.calls[0][0]).toBe(odesliUrl(SPOTIFY_TRACK_LINK))
+-      expect(screen.getByText(ODESLI_TITLE)).toBeInTheDocument()
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
++      expect(screen.getByText(SPOTIFY_TITLE)).toBeInTheDocument()
++    })
++
++    it('converts an Apple link automatically with one iTunes lookup and no fetch', async () => {
++      const { fetchMock, loads } = appleCase()
++      openWithShareParam(APPLE_SONG_LINK)
++      render(<App />)
++      await waitForResult()
++      expect(screen.getByText(APPLE_TITLE)).toBeInTheDocument()
++      expect(fetchMock).not.toHaveBeenCalled()
++      expect(loads).toHaveLength(1)
+     })
+ 
+     it('converts only once', async () => {
+-      const fetchMock = odesliTrack()
++      const { fetchMock, loads } = spotifyCase()
+       openWithShareParam(SPOTIFY_TRACK_RAW)
+       render(<App />)
+       await waitForResult()
+       await waitForIdle()
+       expect(fetchMock).toHaveBeenCalledTimes(1)
++      expect(loads).toHaveLength(1)
+     })
+ 
+     it('converts only once under StrictMode', async () => {
+-      const fetchMock = odesliTrack()
++      const { fetchMock, loads } = spotifyCase()
+       openWithShareParam(SPOTIFY_TRACK_RAW)
+       render(
+         <StrictMode>
+@@ -395,10 +450,11 @@ describe('App', () => {
+       await waitForResult()
+       await waitForIdle()
+       expect(fetchMock).toHaveBeenCalledTimes(1)
++      expect(loads).toHaveLength(1)
+     })
+ 
+     it('shows the invalid-link error for a value that is not a music link', () => {
+-      const fetchMock = odesliTrack()
++      const { fetchMock } = spotifyCase()
+       openWithShareParam('not-a-link')
+       render(<App />)
+       expect(input()).toHaveValue('not-a-link')
+@@ -408,7 +464,7 @@ describe('App', () => {
+     })
+   })
+ 
+-  describe('the reported Spotify link when Odesli is rate-limited twice', () => {
++  describe('the reported Spotify link', () => {
+     const picker = () => screen.getByRole('group', { name: 'Which artist?' })
+     const queryPicker = () => screen.queryByRole('group', { name: 'Which artist?' })
+     const pick = (name: string) => within(picker()).getByRole('button', { name })
+@@ -420,6 +476,15 @@ describe('App', () => {
+       await waitForResult()
+     }
+ 
++    it('requests only the oEmbed, once, then one iTunes search', async () => {
++      const { fetchMock, loads } = reportedCase()
++      render(<App />)
++      submit(REPORTED_LINK)
++      await waitForResult()
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(REPORTED_LINK)])
++      expect(loads).toHaveLength(1)
++    })
++
+     it('shows the oEmbed title and artwork', async () => {
+       await showReported()
+       expect(screen.getByText(REPORTED_TITLE)).toBeInTheDocument()
+@@ -570,6 +635,11 @@ describe('App', () => {
+       expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+     })
+ 
++    it('shows no "Search in Spotify app" link, since Spotify is exact', async () => {
++      await showReported()
++      expect(queryPlatformLink(APP_LINK_NAME)).not.toBeInTheDocument()
++    })
++
+     it('shows no picker when the iTunes search fails to load', async () => {
+       reportedCase('error')
+       render(<App />)
+@@ -580,113 +650,20 @@ describe('App', () => {
+     })
+   })
+ 
+-  describe('the artist picker elsewhere', () => {
+-    it('is not shown for an Odesli result', async () => {
+-      odesliTrack()
+-      render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
+-      await waitForResult()
+-      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+-    })
+-
+-    it('is not shown for an Apple link that falls back to the iTunes lookup', async () => {
+-      mockFetch(() => jsonResponse({}, 429))
+-      mockJsonp(() => ({ data: fixture('itunes-lookup-song.json') }))
+-      render(<App />)
+-      submit(APPLE_SONG_LINK)
+-      await waitForResult()
+-      expect(screen.getByText('Queen')).toBeInTheDocument()
+-      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+-    })
+-
+-    it('is not shown when Odesli answers on its second attempt', async () => {
+-      let calls = 0
+-      mockFetch(() =>
+-        ++calls === 1
+-          ? Promise.reject(new TypeError('Failed to fetch'))
+-          : jsonResponse(fixture('odesli-track.json')),
+-      )
+-      mockJsonp(() => 'error')
+-      render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
+-      await waitForResult()
+-      expect(screen.getByText(ODESLI_TITLE)).toBeInTheDocument()
+-      expect(screen.getByText('Queen')).toBeInTheDocument()
+-      expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+-    })
+-  })
+-
+-  // PLAN-003 AC1, from odesli-apple-dirt.json (first response, no Spotify)
+-  // and odesli-ytm-dirt.json (the hop for its YouTube Music link).
+-  describe('the reported Apple link whose Odesli response lacks Spotify', () => {
+-    const DIRT_RAW = 'https://music.apple.com/us/album/dirt/6811936164?i=6811936165'
+-    const DIRT_YTM = 'https://music.youtube.com/watch?v=PLCHLDRdirt'
+-    const DIRT_LINKS = {
+-      'Apple Music':
+-        'https://geo.music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m',
+-      Spotify: 'https://open.spotify.com/track/0PlaceholderDirtTrack0',
+-      'YouTube Music': DIRT_YTM,
+-    }
+-    const DIRT_ART =
+-      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/aa/bb/cc/aabbccdd-placeholder/source/512x512bb.jpg'
+-
+-    async function showDirt() {
+-      mockFetch((url) =>
+-        url === odesliUrl(DIRT_RAW)
+-          ? jsonResponse(fixture('odesli-apple-dirt.json'))
+-          : url === odesliUrl(DIRT_YTM)
+-            ? jsonResponse(fixture('odesli-ytm-dirt.json'))
+-            : Promise.reject(new Error(`unexpected fetch ${url}`)),
+-      )
+-      mockJsonp(() => 'error')
+-      render(<App />)
+-      submit(DIRT_RAW)
+-      await waitForResult()
+-    }
+-
+-    it('links Spotify to the track Odesli found from the YouTube Music link, tagged EXACT', async () => {
+-      await showDirt()
+-      expect(platformLink('Spotify')).toHaveAttribute('href', DIRT_LINKS.Spotify)
+-      expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
+-      expect(within(row('Spotify')).queryByText('SEARCH')).not.toBeInTheDocument()
+-    })
+-
+-    it.each(['Apple Music', 'YouTube Music'] as const)(
+-      "links %s to the first Odesli response's URL, tagged EXACT",
+-      async (name) => {
+-        await showDirt()
+-        expect(platformLink(name)).toHaveAttribute('href', DIRT_LINKS[name])
+-        expect(within(row(name)).getByText('EXACT')).toBeInTheDocument()
+-      },
+-    )
+-
+-    it('shows the title, artist and artwork from the first Odesli response', async () => {
+-      await showDirt()
+-      expect(screen.getByText('Dirt')).toBeInTheDocument()
+-      expect(screen.getByText('Placeholder Artist')).toBeInTheDocument()
+-      expect(artwork()).toHaveAttribute('src', DIRT_ART)
+-    })
+-
+-    it('shows no "Search in Spotify app" link', async () => {
+-      await showDirt()
+-      expect(queryPlatformLink('Search in Spotify app')).not.toBeInTheDocument()
+-    })
+-  })
+-
+   describe('copy and share', () => {
+     it('copies the converted share text with "Copy share text"', async () => {
+-      odesliTrack()
++      appleCase()
+       const writeText = stubClipboard('ok')
+       render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
++      submit(APPLE_SONG_LINK)
+       await waitForResult()
+       fireEvent.click(screen.getByRole('button', { name: 'Copy share text' }))
+       await waitFor(() =>
+         expect(writeText).toHaveBeenCalledWith(
+-          expectedShareText(`${ODESLI_TITLE} — Queen`, {
+-            apple: ODESLI_LINKS['Apple Music'],
+-            spotify: ODESLI_LINKS.Spotify,
+-            ytm: ODESLI_LINKS['YouTube Music'],
++          expectedShareText(`${APPLE_TITLE} — ${APPLE_ARTIST}`, {
++            apple: APPLE_LINKS['Apple Music'],
++            spotify: APPLE_LINKS.Spotify,
++            ytm: APPLE_LINKS['YouTube Music'],
+           }),
+         ),
+       )
+@@ -694,13 +671,13 @@ describe('App', () => {
+     })
+ 
+     it('copies a row link with its Copy button', async () => {
+-      odesliTrack()
++      appleCase()
+       const writeText = stubClipboard('ok')
+       render(<App />)
+-      submit(SPOTIFY_TRACK_RAW)
++      submit(APPLE_SONG_LINK)
+       await waitForResult()
+       fireEvent.click(within(row('YouTube Music')).getByRole('button', { name: 'Copy' }))
+-      await waitFor(() => expect(writeText).toHaveBeenCalledWith(ODESLI_LINKS['YouTube Music']))
++      await waitFor(() => expect(writeText).toHaveBeenCalledWith(APPLE_LINKS['YouTube Music']))
+     })
+   })
+ })
+diff --git a/tests/components/ResultCard.test.tsx b/tests/components/ResultCard.test.tsx
+index f9a7025..525e353 100644
+--- a/tests/components/ResultCard.test.tsx
++++ b/tests/components/ResultCard.test.tsx
+@@ -25,7 +25,8 @@ const CANDIDATES: ArtistCandidate[] = [
+ ]
+ const CANDIDATE_NAMES = ['First Artist · Song', 'Second Artist · Song (Live)', 'Third Artist · Other Song']
+ 
+-// An exact result with an artist and no candidates, as Odesli gives.
++// A Spotify-source result after the user picked an artist: Apple and Spotify
++// exact, YouTube Music a search, no candidates.
+ const CONVERSION = withSearchFallbacks({
+   title: 'Song',
+   artist: 'First Artist',
+@@ -42,12 +43,13 @@ const FALLBACK = withSearchFallbacks({
+   candidates: CANDIDATES,
+ })
+ 
+-// An Apple-source result Odesli gave no Spotify link for: Spotify is a search.
++// An Apple-source result: only the Apple link is exact, so Spotify and
++// YouTube Music are searches.
+ const SPOTIFY_SEARCH = withSearchFallbacks({
+   title: 'Song',
+   artist: 'First Artist',
+   art: 'https://example.com/art.jpg',
+-  links: { apple: CANDIDATES[0].url, ytm: 'https://music.youtube.com/watch?v=abc' },
++  links: { apple: CANDIDATES[0].url },
+ })
+ const SPOTIFY_WEB_SEARCH = 'https://open.spotify.com/search/Song%20First%20Artist'
+ const SPOTIFY_APP_SEARCH = 'spotify:search:Song%20First%20Artist'
+diff --git a/tests/hooks/useConversion.test.ts b/tests/hooks/useConversion.test.ts
+index c626d93..76cce20 100644
+--- a/tests/hooks/useConversion.test.ts
++++ b/tests/hooks/useConversion.test.ts
+@@ -1,23 +1,26 @@
+ import { act, renderHook, waitFor } from '@testing-library/react'
+-import { describe, expect, it } from 'vitest'
++import { describe, expect, it, vi } from 'vitest'
+ import { useConversion } from '../../src/hooks/useConversion'
+ import { withSearchFallbacks } from '../../src/lib/links'
+-import { SPOTIFY_OEMBED_URL } from '../../src/constants'
+-import { fromOdesli, odesliUrl } from '../../src/lib/lookup'
++import { fromSpotifyFallback, spotifyOembedUrl } from '../../src/lib/lookup'
+ import type { ArtistCandidate, ParsedLink } from '../../src/lib/types'
+ import { fixture } from '../support/fixtures'
+ import {
+   type Deferred,
++  type FetchAnswer,
++  type JsonpLoad,
+   deferred,
++  failsToFetch,
+   fetchedUrls,
+   jsonResponse,
+   jsonpScriptsInDocument,
+-  mockFetch,
++  mockFetchOnly,
+   mockJsonp,
+ } from '../support/network'
+ 
+ // AC10 (conversion state) and, from PLAN-002, AC7 (choosing an artist candidate).
+ // The task interface names the result `conversion` and adds `isError`.
++// PLAN-004 AC1/AC9: lookups go straight to oEmbed/iTunes.
+ 
+ const INVALID_LINK_MESSAGE = 'That link isn’t a Spotify or Apple Music track or album.'
+ const LOOKING_UP_MESSAGE = 'Looking it up…'
+@@ -32,20 +35,37 @@ const SPOTIFY_TRACK: ParsedLink = {
+   link: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
+ }
+ const SPOTIFY_TRACK_RAW = 'https://open.spotify.com/intl-de/track/4u7EnebtmKWzUH433cf5Qv?si=abc'
++const SPOTIFY_ALBUM_LINK = 'https://open.spotify.com/album/1GbtB4zTqAsyfZEsm1RZfx'
+ const APPLE_ALBUM_LINK = 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041'
+ const SHORT_LINK = 'https://spotify.link/aBcD1234'
+ 
+-const odesliFails = () => jsonResponse({}, 500)
+ const sharedLink = () => new URLSearchParams(window.location.search).get('u')
+ 
+-const ODESLI_TRACK = () => withSearchFallbacks(fromOdesli(fixture('odesli-track.json')))
++const answer =
++  (body: unknown, status = 200): FetchAnswer =>
++  () =>
++    jsonResponse(body, status)
+ 
+-// Odesli fails, oEmbed returns `oembed`, iTunes search returns the songs fixture.
+-function spotifyFallback(oembed: unknown) {
+-  mockFetch((url) =>
+-    url.startsWith(SPOTIFY_OEMBED_URL) ? jsonResponse(oembed) : odesliFails(),
++// iTunes search answers albums for an album search and songs otherwise.
++const itunesSearch = (src: string) => ({
++  data: fixture(src.includes('entity=album') ? 'itunes-search-albums.json' : 'itunes-search-songs.json'),
++})
++
++// What a Spotify track lookup gives with the track oEmbed and the songs search.
++const SPOTIFY_TRACK_RESULT = () =>
++  withSearchFallbacks(
++    fromSpotifyFallback(
++      fixture('spotify-oembed-track.json'),
++      fixture('itunes-search-songs.json'),
++      SPOTIFY_TRACK,
++    ),
+   )
+-  mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
++
++// oEmbed answers `link` with `oembed`; iTunes search answers by entity.
++function spotifyCase(link: string, oembed: FetchAnswer) {
++  const fetchMock = mockFetchOnly({ [spotifyOembedUrl(link)]: oembed })
++  const loads = mockJsonp(itunesSearch)
++  return { fetchMock, loads }
+ }
+ 
+ async function convertAndSettle(raw: string) {
+@@ -66,7 +86,7 @@ describe('useConversion', () => {
+ 
+   describe('with input that does not parse', () => {
+     it('sets the invalid-link error', () => {
+-      mockFetch(() => jsonResponse(fixture('odesli-track.json')))
++      mockFetchOnly({})
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert('not a link'))
+       expect(result.current.status).toBe('error')
+@@ -76,7 +96,7 @@ describe('useConversion', () => {
+     })
+ 
+     it('makes no request', () => {
+-      const fetchMock = mockFetch(() => jsonResponse(fixture('odesli-track.json')))
++      const fetchMock = mockFetchOnly({})
+       const loads = mockJsonp(() => ({ data: {} }))
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert('https://example.com/track/123'))
+@@ -86,7 +106,7 @@ describe('useConversion', () => {
+     })
+ 
+     it('treats empty input as invalid', () => {
+-      const fetchMock = mockFetch(() => jsonResponse(fixture('odesli-track.json')))
++      const fetchMock = mockFetchOnly({})
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(''))
+       expect(result.current.message).toBe(INVALID_LINK_MESSAGE)
+@@ -96,7 +116,7 @@ describe('useConversion', () => {
+ 
+   describe('while a lookup is running', () => {
+     it('is busy with the looking-up message and no error', () => {
+-      mockFetch(() => deferred<Response>().promise)
++      spotifyCase(SPOTIFY_TRACK.link, () => deferred<Response>().promise)
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+       expect(result.current.status).toBe('busy')
+@@ -104,26 +124,44 @@ describe('useConversion', () => {
+       expect(result.current.isError).toBe(false)
+     })
+ 
+-    it('looks up the canonical link', () => {
+-      const fetchMock = mockFetch(() => deferred<Response>().promise)
++    it('looks up the canonical link with oEmbed only', () => {
++      const { fetchMock } = spotifyCase(SPOTIFY_TRACK.link, () => deferred<Response>().promise)
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(SPOTIFY_TRACK.link)])
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+     })
+   })
+ 
+   describe('on success', () => {
+     it('is done with the conversion, an empty message and no error', async () => {
+-      mockFetch(() => jsonResponse(fixture('odesli-track.json')))
++      spotifyCase(SPOTIFY_TRACK.link, answer(fixture('spotify-oembed-track.json')))
+       const { result } = await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(result.current.status).toBe('done')
+-      expect(result.current.conversion).toEqual(ODESLI_TRACK())
++      expect(result.current.conversion).toEqual(SPOTIFY_TRACK_RESULT())
+       expect(result.current.message).toBe('')
+       expect(result.current.isError).toBe(false)
+     })
+ 
++    it('makes one oEmbed request and one iTunes search for a Spotify link', async () => {
++      const { fetchMock, loads } = spotifyCase(SPOTIFY_TRACK.link, answer(fixture('spotify-oembed-track.json')))
++      await convertAndSettle(SPOTIFY_TRACK_RAW)
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
++      expect(loads).toHaveLength(1)
++    })
++
++    it('is done with an Apple link after one iTunes lookup and no fetch', async () => {
++      const fetchMock = mockFetchOnly({})
++      const loads = mockJsonp(() => ({ data: fixture('itunes-lookup-album.json') }))
++      const { result } = await convertAndSettle(APPLE_ALBUM_LINK)
++      expect(result.current.status).toBe('done')
++      expect(result.current.conversion?.title).toBe('A Night At The Opera (2011 Remaster)')
++      expect(result.current.conversion?.artist).toBe('Queen')
++      expect(fetchedUrls(fetchMock)).toEqual([])
++      expect(loads).toHaveLength(1)
++    })
++
+     it('replaces the page URL with ?u=<canonical link>', async () => {
+-      mockFetch(() => jsonResponse(fixture('odesli-track.json')))
++      spotifyCase(SPOTIFY_TRACK.link, answer(fixture('spotify-oembed-track.json')))
+       const historyLength = window.history.length
+       await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(sharedLink()).toBe(SPOTIFY_TRACK.link)
+@@ -131,7 +169,7 @@ describe('useConversion', () => {
+     })
+ 
+     it('shares the resolved canonical link for a short link', async () => {
+-      spotifyFallback(fixture('spotify-oembed-track.json'))
++      spotifyCase(SHORT_LINK, answer(fixture('spotify-oembed-track.json')))
+       const { result } = await convertAndSettle(SHORT_LINK)
+       expect(result.current.status).toBe('done')
+       expect(sharedLink()).toBe(SPOTIFY_TRACK.link)
+@@ -140,7 +178,7 @@ describe('useConversion', () => {
+ 
+   describe('on failure', () => {
+     it('shows the short-link message when a spotify.link URL could not be resolved', async () => {
+-      spotifyFallback(fixture('spotify-oembed-no-player.json'))
++      spotifyCase(SHORT_LINK, answer(fixture('spotify-oembed-no-player.json')))
+       const { result } = await convertAndSettle(SHORT_LINK)
+       expect(result.current.status).toBe('error')
+       expect(result.current.isError).toBe(true)
+@@ -148,10 +186,8 @@ describe('useConversion', () => {
+       expect(result.current.conversion).toBeNull()
+     })
+ 
+-    it('shows the not-found message for a full link with no result', async () => {
+-      mockFetch((url) =>
+-        url === odesliUrl(SPOTIFY_TRACK.link) ? odesliFails() : Promise.reject(new TypeError('Failed to fetch')),
+-      )
++    it('shows the not-found message when the oEmbed request fails', async () => {
++      spotifyCase(SPOTIFY_TRACK.link, failsToFetch)
+       const { result } = await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(result.current.status).toBe('error')
+       expect(result.current.isError).toBe(true)
+@@ -159,59 +195,66 @@ describe('useConversion', () => {
+       expect(result.current.conversion).toBeNull()
+     })
+ 
+-    it('shows the not-found message when Odesli answers with no title', async () => {
+-      mockFetch(() => jsonResponse(fixture('odesli-empty.json')))
++    it('shows the not-found message after one request when oEmbed answers non-OK', async () => {
++      const { fetchMock } = spotifyCase(SPOTIFY_TRACK.link, answer({}, 404))
+       const { result } = await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(result.current.message).toBe(NOT_FOUND_MESSAGE)
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+     })
+ 
+     it('leaves the page URL unchanged', async () => {
+-      mockFetch(() => jsonResponse(fixture('odesli-empty.json')))
++      spotifyCase(SPOTIFY_TRACK.link, answer({}, 404))
+       await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(sharedLink()).toBeNull()
+     })
+   })
+ 
+   describe('with overlapping lookups', () => {
+-    // Each link's Odesli request waits on its own deferred response.
+-    function deferOdesli() {
++    // Each Spotify link's oEmbed request waits on its own deferred response;
++    // iTunes search answers at once. `respond` answers one link's oEmbed and
++    // waits until that lookup has finished.
++    function deferOembed() {
+       const pending = new Map<string, Deferred<Response>>()
+-      const fetchMock = mockFetch((url) => {
++      const later = (link: string) => () => {
+         const d = deferred<Response>()
+-        pending.set(url, d)
++        pending.set(link, d)
+         return d.promise
++      }
++      const fetchMock = mockFetchOnly({
++        [spotifyOembedUrl(SPOTIFY_TRACK.link)]: later(SPOTIFY_TRACK.link),
++        [spotifyOembedUrl(SPOTIFY_ALBUM_LINK)]: later(SPOTIFY_ALBUM_LINK),
+       })
+-      const respond = (link: string, body: unknown) =>
+-        act(async () => pending.get(odesliUrl(link))!.resolve(jsonResponse(body)))
++      const loads: JsonpLoad[] = mockJsonp(itunesSearch)
++      const respond = async (link: string, body: unknown) => {
++        const before = loads.length
++        await vi.waitFor(() => expect(pending.has(link)).toBe(true))
++        await act(async () => pending.get(link)!.resolve(jsonResponse(body)))
++        await vi.waitFor(() => expect(loads.length).toBe(before + 1))
++        await act(async () => new Promise((r) => setTimeout(r, 0)))
++      }
+       return { fetchMock, respond }
+     }
+ 
+-    const APPLE_ALBUM_ODESLI = {
+-      entityUniqueId: 'ITUNES_ALBUM::1440806041',
+-      entitiesByUniqueId: {
+-        'ITUNES_ALBUM::1440806041': { title: 'A Night At The Opera', artistName: 'Queen' },
+-      },
+-      linksByPlatform: { appleMusic: { url: APPLE_ALBUM_LINK } },
+-    }
++    const ALBUM_TITLE = 'A Night At The Opera (2011 Remaster)'
+ 
+     it('drops an older response that arrives after the newer one', async () => {
+-      const { respond } = deferOdesli()
++      const { respond } = deferOembed()
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+-      act(() => result.current.convert(APPLE_ALBUM_LINK))
+-      await respond(APPLE_ALBUM_LINK, APPLE_ALBUM_ODESLI)
+-      await respond(SPOTIFY_TRACK.link, fixture('odesli-track.json'))
++      act(() => result.current.convert(SPOTIFY_ALBUM_LINK))
++      await respond(SPOTIFY_ALBUM_LINK, fixture('spotify-oembed-album.json'))
++      await respond(SPOTIFY_TRACK.link, fixture('spotify-oembed-track.json'))
+       expect(result.current.status).toBe('done')
+-      expect(result.current.conversion?.title).toBe('A Night At The Opera')
+-      expect(sharedLink()).toBe(APPLE_ALBUM_LINK)
++      expect(result.current.conversion?.title).toBe(ALBUM_TITLE)
++      expect(sharedLink()).toBe(SPOTIFY_ALBUM_LINK)
+     })
+ 
+     it('stays busy when an older response arrives before the newer one', async () => {
+-      const { respond } = deferOdesli()
++      const { respond } = deferOembed()
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+-      act(() => result.current.convert(APPLE_ALBUM_LINK))
+-      await respond(SPOTIFY_TRACK.link, fixture('odesli-track.json'))
++      act(() => result.current.convert(SPOTIFY_ALBUM_LINK))
++      await respond(SPOTIFY_TRACK.link, fixture('spotify-oembed-track.json'))
+       expect(result.current.status).toBe('busy')
+       expect(result.current.conversion).toBeNull()
+       expect(result.current.message).toBe(LOOKING_UP_MESSAGE)
+@@ -219,18 +262,18 @@ describe('useConversion', () => {
+     })
+ 
+     it('shows the newer result once it arrives after an older one', async () => {
+-      const { respond } = deferOdesli()
++      const { respond } = deferOembed()
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+-      act(() => result.current.convert(APPLE_ALBUM_LINK))
+-      await respond(SPOTIFY_TRACK.link, fixture('odesli-track.json'))
+-      await respond(APPLE_ALBUM_LINK, APPLE_ALBUM_ODESLI)
++      act(() => result.current.convert(SPOTIFY_ALBUM_LINK))
++      await respond(SPOTIFY_TRACK.link, fixture('spotify-oembed-track.json'))
++      await respond(SPOTIFY_ALBUM_LINK, fixture('spotify-oembed-album.json'))
+       expect(result.current.status).toBe('done')
+-      expect(result.current.conversion?.title).toBe('A Night At The Opera')
++      expect(result.current.conversion?.title).toBe(ALBUM_TITLE)
+     })
+ 
+     it('stays busy with the invalid-link error when invalid input arrives during a lookup', () => {
+-      deferOdesli()
++      deferOembed()
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+       act(() => result.current.convert('not a link'))
+@@ -241,19 +284,19 @@ describe('useConversion', () => {
+     })
+ 
+     it('settles on the pending lookup result after invalid input arrived during it', async () => {
+-      const { respond } = deferOdesli()
++      const { respond } = deferOembed()
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+       act(() => result.current.convert('not a link'))
+-      await respond(SPOTIFY_TRACK.link, fixture('odesli-track.json'))
++      await respond(SPOTIFY_TRACK.link, fixture('spotify-oembed-track.json'))
+       expect(result.current.status).toBe('done')
+-      expect(result.current.conversion).toEqual(ODESLI_TRACK())
++      expect(result.current.conversion).toEqual(SPOTIFY_TRACK_RESULT())
+       expect(result.current.message).toBe('')
+       expect(result.current.isError).toBe(false)
+     })
+ 
+     it('ignores a repeat convert of the same link while it is busy', () => {
+-      const { fetchMock } = deferOdesli()
++      const { fetchMock } = deferOembed()
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+       act(() => result.current.convert(SPOTIFY_TRACK.link))
+@@ -262,10 +305,10 @@ describe('useConversion', () => {
+     })
+ 
+     it('looks the same link up again once the earlier lookup has finished', async () => {
+-      const { fetchMock, respond } = deferOdesli()
++      const { fetchMock, respond } = deferOembed()
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+-      await respond(SPOTIFY_TRACK.link, fixture('odesli-track.json'))
++      await respond(SPOTIFY_TRACK.link, fixture('spotify-oembed-track.json'))
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+       expect(fetchMock).toHaveBeenCalledTimes(2)
+       expect(result.current.status).toBe('busy')
+@@ -275,18 +318,20 @@ describe('useConversion', () => {
+   describe('after unmount', () => {
+     it('does not replace the page URL when the lookup finishes', async () => {
+       const pending = deferred<Response>()
+-      mockFetch(() => pending.promise)
++      const { loads } = spotifyCase(SPOTIFY_TRACK.link, () => pending.promise)
+       const { result, unmount } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+       unmount()
+-      await act(async () => pending.resolve(jsonResponse(fixture('odesli-track.json'))))
++      await act(async () => pending.resolve(jsonResponse(fixture('spotify-oembed-track.json'))))
++      await vi.waitFor(() => expect(loads).toHaveLength(1))
++      await act(async () => new Promise((r) => setTimeout(r, 0)))
+       expect(sharedLink()).toBeNull()
+     })
+   })
+ 
+   describe('chooseArtist', () => {
+-    // The reported case: Odesli is rate-limited twice, oEmbed has no artist,
+-    // iTunes search returns several artists.
++    // The reported case: oEmbed has no artist, iTunes search returns several
++    // artists.
+     const REPORTED_RAW = 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb'
+     const NEON: ArtistCandidate = {
+       artist: 'The Neon Prairie Dogs',
+@@ -300,11 +345,9 @@ describe('useConversion', () => {
+     }
+ 
+     async function convertedWithCandidates() {
+-      mockFetch((url) =>
+-        url.startsWith(SPOTIFY_OEMBED_URL)
+-          ? jsonResponse(fixture('spotify-oembed-aint-gettin-high.json'))
+-          : jsonResponse({}, 429),
+-      )
++      mockFetchOnly({
++        [spotifyOembedUrl(REPORTED_RAW)]: answer(fixture('spotify-oembed-aint-gettin-high.json')),
++      })
+       mockJsonp(() => ({ data: fixture('itunes-search-aint-gettin-high.json') }))
+       return convertAndSettle(REPORTED_RAW)
+     }
+diff --git a/tests/lib/api.test.ts b/tests/lib/api.test.ts
+index 475d88a..b2fb65d 100644
+--- a/tests/lib/api.test.ts
++++ b/tests/lib/api.test.ts
+@@ -1,31 +1,32 @@
+ import { describe, expect, it, vi } from 'vitest'
+-import { SPOTIFY_OEMBED_URL } from '../../src/constants'
+ import { jsonp, lookupLink } from '../../src/lib/api'
+-import { withSearchFallbacks } from '../../src/lib/links'
++import { spotifyAppSearchUri, withSearchFallbacks } from '../../src/lib/links'
+ import {
+   fromItunesLookup,
+-  fromOdesli,
+   fromSpotifyFallback,
+   itunesLookupUrl,
+   itunesSearchUrl,
+-  odesliUrl,
+   spotifyOembedUrl,
+ } from '../../src/lib/lookup'
+ import type { ParsedLink } from '../../src/lib/types'
+-import { fixture, odesliWithout, ytmDirtWith } from '../support/fixtures'
++import { fixture } from '../support/fixtures'
+ import {
++  type FetchAnswer,
+   type JsonpOutcome,
++  failsToFetch,
+   fetchedUrls,
+   jsonResponse,
+   jsonpScriptsInDocument,
+-  mockFetch,
++  mockFetchOnly,
+   mockJsonp,
+ } from '../support/network'
+ 
+-// AC9: lookupLink tries Odesli, falls back by source, fills search links,
+-// and JSONP times out after 8 s and always cleans up.
+-// PLAN-002 AC4: Odesli gets one immediate retry before the fallback.
+-// AC5/AC6: the Spotify fallback leaves the artist blank and offers candidates.
++// lookupLink goes by source: an Apple link is one iTunes lookup over JSONP;
++// a Spotify link is one oEmbed fetch, then one iTunes search over JSONP. It
++// fills search links, never retries and never rejects. JSONP times out after
++// 8 s and always cleans up.
++// PLAN-004 AC1: no lookup requests Odesli.
++// PLAN-004 AC2-AC4: the Apple and Spotify paths and their degraded paths.
+ 
+ const JSONP_TIMEOUT = 8000
+ const ITUNES_URL = 'https://itunes.apple.com/search?term=queen&entity=song'
+@@ -45,10 +46,24 @@ const APPLE_TRACK: ParsedLink = {
+   link: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
+ }
+ 
++const APPLE_ALBUM: ParsedLink = {
++  src: 'apple',
++  kind: 'album',
++  id: '1440806041',
++  slug: 'a night at the opera 2011 remaster',
++  link: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
++}
++
+ const callbackRegistered = (name: string) => name in window
+ 
+-const odesliFails = () => jsonResponse({}, 500)
+-const odesliRateLimited = () => jsonResponse({}, 429)
++const answer =
++  (name: string): FetchAnswer =>
++  () =>
++    jsonResponse(fixture(name))
++const answersStatus =
++  (status: number): FetchAnswer =>
++  () =>
++    jsonResponse({}, status)
+ 
+ // The reported case.
+ const REPORTED: ParsedLink = {
+@@ -145,156 +160,147 @@ describe('jsonp', () => {
+ })
+ 
+ describe('lookupLink', () => {
+-  describe('when Odesli answers', () => {
+-    it('returns the Odesli result with search fallbacks filled in', async () => {
+-      mockFetch((url) => {
+-        if (url === odesliUrl(SPOTIFY_TRACK.link)) return jsonResponse(fixture('odesli-track.json'))
+-        throw new Error(`unexpected fetch ${url}`)
+-      })
+-      const { conversion } = await lookupLink(SPOTIFY_TRACK)
+-      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-track.json'))))
+-    })
+-
+-    it('makes no fallback requests', async () => {
+-      const fetchMock = mockFetch(() => jsonResponse(fixture('odesli-track.json')))
+-      const loads = mockJsonp(() => ({ data: {} }))
+-      await lookupLink(SPOTIFY_TRACK)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(SPOTIFY_TRACK.link)])
+-      expect(loads).toHaveLength(0)
+-    })
+-
+-    it('fills search links for the platforms Odesli has no link for', async () => {
+-      const partial = fixture<object>('odesli-partial.json')
+-      mockFetch(() =>
+-        jsonResponse({
+-          ...partial,
+-          entitiesByUniqueId: {
+-            'SPOTIFY_SONG::0000000000000000000000': { title: 'Song', artistName: 'Band' },
+-          },
+-        }),
+-      )
+-      const { conversion } = await lookupLink(SPOTIFY_TRACK)
+-      expect(conversion?.exact).toEqual({ apple: false, spotify: true, ytm: false })
+-      expect(conversion?.links.ytm).toBe('https://music.youtube.com/search?q=Song%20Band')
+-    })
++  describe('Apple links', () => {
++    // No fetch is expected at all; iTunes answers the JSONP load with `itunes`.
++    function appleCase(itunes: JsonpOutcome = { data: fixture('itunes-lookup-song.json') }) {
++      const fetchMock = mockFetchOnly({})
++      const loads = mockJsonp(() => itunes)
++      return { fetchMock, loads }
++    }
+ 
+-    it('returns the parsed link it was given', async () => {
+-      mockFetch(() => jsonResponse(fixture('odesli-track.json')))
+-      const { parsed } = await lookupLink(SPOTIFY_TRACK)
+-      expect(parsed).toEqual(SPOTIFY_TRACK)
++    it('make one iTunes lookup over JSONP and no fetch', async () => {
++      const { fetchMock, loads } = appleCase()
++      await lookupLink(APPLE_TRACK)
++      expect(fetchedUrls(fetchMock)).toEqual([])
++      expect(loads.map((l) => l.src.startsWith(itunesLookupUrl(APPLE_TRACK)))).toEqual([true])
+     })
+ 
+-    it('returns a null conversion when Odesli gives no title', async () => {
+-      mockFetch(() => jsonResponse(fixture('odesli-empty.json')))
+-      const { conversion } = await lookupLink(SPOTIFY_TRACK)
+-      expect(conversion).toBeNull()
++    it('make one iTunes album lookup and no fetch for an Apple album link', async () => {
++      const { fetchMock, loads } = appleCase({ data: fixture('itunes-lookup-album.json') })
++      await lookupLink(APPLE_ALBUM)
++      expect(fetchedUrls(fetchMock)).toEqual([])
++      expect(loads.map((l) => l.src.startsWith(itunesLookupUrl(APPLE_ALBUM)))).toEqual([true])
+     })
+-  })
+ 
+-  describe('Apple links when Odesli fails', () => {
+-    it('fall back to an iTunes lookup over JSONP after an Odesli error status', async () => {
+-      mockFetch(odesliFails)
+-      const loads = mockJsonp(() => ({ data: fixture('itunes-lookup-song.json') }))
++    it('return the iTunes lookup result with search fallbacks filled in', async () => {
++      appleCase()
+       const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(loads.map((l) => l.src.startsWith(itunesLookupUrl(APPLE_TRACK)))).toEqual([true])
+       expect(conversion).toEqual(
+         withSearchFallbacks(fromItunesLookup(fixture('itunes-lookup-song.json'), APPLE_TRACK)),
+       )
+     })
+ 
+-    it('fall back to an iTunes lookup when the Odesli request itself fails', async () => {
+-      mockFetch(() => {
+-        throw new TypeError('Failed to fetch')
+-      })
+-      mockJsonp(() => ({ data: fixture('itunes-lookup-song.json') }))
++    it('take the title, artist and art from the lookup', async () => {
++      appleCase()
+       const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(conversion).toEqual(
+-        withSearchFallbacks(fromItunesLookup(fixture('itunes-lookup-song.json'), APPLE_TRACK)),
++      expect(conversion?.title).toBe('Bohemian Rhapsody')
++      expect(conversion?.artist).toBe('Queen')
++      expect(conversion?.art).toBe(
++        'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/300x300bb.jpg',
+       )
+     })
+ 
+-    it('request Odesli twice and do not request Spotify oEmbed', async () => {
+-      const fetchMock = mockFetch(odesliFails)
+-      mockJsonp(() => ({ data: fixture('itunes-lookup-song.json') }))
+-      await lookupLink(APPLE_TRACK)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(APPLE_TRACK.link), odesliUrl(APPLE_TRACK.link)])
+-    })
+-
+-    it('fall back to the exact iTunes lookup after two Odesli 429s', async () => {
+-      const fetchMock = mockFetch(odesliRateLimited)
+-      const loads = mockJsonp(() => ({ data: fixture('itunes-lookup-song.json') }))
++    it('link Apple Music to the input link, tagged exact', async () => {
++      appleCase()
+       const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(fetchedUrls(fetchMock)).toHaveLength(2)
+-      expect(loads).toHaveLength(1)
+-      expect(conversion?.artist).toBe('Queen')
+       expect(conversion?.links.apple).toBe(APPLE_TRACK.link)
+       expect(conversion?.exact.apple).toBe(true)
+     })
+ 
++    it('link Spotify and YouTube Music to searches for "title artist", not exact', async () => {
++      appleCase()
++      const { conversion } = await lookupLink(APPLE_TRACK)
++      expect(conversion?.links.spotify).toBe('https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen')
++      expect(conversion?.links.ytm).toBe('https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen')
++      expect(conversion?.exact.spotify).toBe(false)
++      expect(conversion?.exact.ytm).toBe(false)
++    })
++
++    it('give a "Search in Spotify app" link for "title artist"', async () => {
++      appleCase()
++      const { conversion } = await lookupLink(APPLE_TRACK)
++      expect(conversion?.spotifyAppSearch).toBe(spotifyAppSearchUri('Bohemian Rhapsody Queen'))
++    })
++
+     it('offer no artist candidates', async () => {
+-      mockFetch(odesliRateLimited)
+-      mockJsonp(() => ({ data: fixture('itunes-lookup-song.json') }))
++      appleCase()
+       const { conversion } = await lookupLink(APPLE_TRACK)
+       expect(conversion?.candidates ?? []).toEqual([])
+     })
+ 
++    it('return the parsed link they were given', async () => {
++      appleCase()
++      const { parsed } = await lookupLink(APPLE_TRACK)
++      expect(parsed).toEqual(APPLE_TRACK)
++    })
++
+     it('treat a failed iTunes JSONP load as no results and use the slug as the title', async () => {
+-      mockFetch(odesliFails)
+-      mockJsonp(() => 'error')
++      appleCase('error')
+       const { conversion } = await lookupLink(APPLE_TRACK)
+       expect(conversion).toEqual(withSearchFallbacks(fromItunesLookup(null, APPLE_TRACK)))
+       expect(conversion?.title).toBe('Bohemian Rhapsody')
++      expect(conversion?.artist).toBe('')
+     })
+ 
+     it('treat an iTunes JSONP timeout as no results', async () => {
+       vi.useFakeTimers()
+-      mockFetch(odesliFails)
+-      mockJsonp(() => 'hang')
++      appleCase('hang')
+       const result = lookupLink(APPLE_TRACK)
+       await vi.advanceTimersByTimeAsync(JSONP_TIMEOUT)
+       const { conversion } = await result
+       expect(conversion).toEqual(withSearchFallbacks(fromItunesLookup(null, APPLE_TRACK)))
+     })
+ 
++    it('use the slug as the title and a blank artist when iTunes returns no results', async () => {
++      appleCase({ data: fixture('itunes-lookup-empty.json') })
++      const { conversion } = await lookupLink(APPLE_TRACK)
++      expect(conversion?.title).toBe('Bohemian Rhapsody')
++      expect(conversion?.artist).toBe('')
++      expect(conversion?.links.apple).toBe(APPLE_TRACK.link)
++      expect(conversion?.exact.apple).toBe(true)
++    })
++
++    it('make no further request after a failed iTunes load', async () => {
++      const { fetchMock, loads } = appleCase('error')
++      await lookupLink(APPLE_TRACK)
++      expect(fetchedUrls(fetchMock)).toEqual([])
++      expect(loads).toHaveLength(1)
++    })
++
+     it('return a null conversion when there is no title from iTunes or the slug', async () => {
+       const noSlug: ParsedLink = { ...APPLE_TRACK, slug: '' }
+-      mockFetch(odesliFails)
+-      mockJsonp(() => ({ data: fixture('itunes-lookup-empty.json') }))
++      appleCase({ data: fixture('itunes-lookup-empty.json') })
+       const { conversion } = await lookupLink(noSlug)
+       expect(conversion).toBeNull()
+     })
+   })
+ 
+-  describe('Spotify links when Odesli fails', () => {
+-    const oembedThen = (body: unknown) => (url: string) =>
+-      url === odesliUrl(SPOTIFY_TRACK.link) || url === odesliUrl(SPOTIFY_SHORT.link)
+-        ? odesliFails()
+-        : url === spotifyOembedUrl(SPOTIFY_TRACK.link) || url === spotifyOembedUrl(SPOTIFY_SHORT.link)
+-          ? jsonResponse(body)
+-          : Promise.reject(new Error(`unexpected fetch ${url}`))
+-
+-    it('fetch oEmbed after both Odesli attempts, in that order', async () => {
+-      const fetchMock = mockFetch(oembedThen(fixture('spotify-oembed-track.json')))
+-      mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
++  describe('Spotify links', () => {
++    // oEmbed answers as `oembed`; any other fetch fails the test.
++    function spotifyCase(
++      oembed: FetchAnswer = answer('spotify-oembed-track.json'),
++      itunes: JsonpOutcome = { data: fixture('itunes-search-songs.json') },
++    ) {
++      const fetchMock = mockFetchOnly({ [spotifyOembedUrl(SPOTIFY_TRACK.link)]: oembed })
++      const loads = mockJsonp(() => itunes)
++      return { fetchMock, loads }
++    }
++
++    it('fetch only the oEmbed for the link, once', async () => {
++      const { fetchMock } = spotifyCase()
+       await lookupLink(SPOTIFY_TRACK)
+-      expect(fetchedUrls(fetchMock)).toEqual([
+-        odesliUrl(SPOTIFY_TRACK.link),
+-        odesliUrl(SPOTIFY_TRACK.link),
+-        spotifyOembedUrl(SPOTIFY_TRACK.link),
+-      ])
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+     })
+ 
+     it('search iTunes over JSONP for the oEmbed title', async () => {
+-      mockFetch(oembedThen(fixture('spotify-oembed-track.json')))
+-      const loads = mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
++      const { loads } = spotifyCase()
+       await lookupLink(SPOTIFY_TRACK)
+       const expected = itunesSearchUrl('Bohemian Rhapsody - Remastered 2011', 'track')
+       expect(loads.map((l) => l.src.startsWith(expected))).toEqual([true])
+     })
+ 
+     it('return the Spotify fallback result with search fallbacks filled in', async () => {
+-      mockFetch(oembedThen(fixture('spotify-oembed-track.json')))
+-      mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
++      spotifyCase()
+       const { conversion } = await lookupLink(SPOTIFY_TRACK)
+       expect(conversion).toEqual(
+         withSearchFallbacks(
+@@ -307,9 +313,14 @@ describe('lookupLink', () => {
+       )
+     })
+ 
++    it('return the parsed link they were given', async () => {
++      spotifyCase()
++      const { parsed } = await lookupLink(SPOTIFY_TRACK)
++      expect(parsed).toEqual(SPOTIFY_TRACK)
++    })
++
+     it('treat a failed iTunes JSONP load as no results', async () => {
+-      mockFetch(oembedThen(fixture('spotify-oembed-track.json')))
+-      mockJsonp(() => 'error')
++      spotifyCase(answer('spotify-oembed-track.json'), 'error')
+       const { conversion } = await lookupLink(SPOTIFY_TRACK)
+       expect(conversion).toEqual(
+         withSearchFallbacks(fromSpotifyFallback(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK)),
+@@ -318,153 +329,130 @@ describe('lookupLink', () => {
+     })
+ 
+     it('return a null conversion when the oEmbed request fails', async () => {
+-      mockFetch((url) =>
+-        url === odesliUrl(SPOTIFY_TRACK.link) ? odesliFails() : Promise.reject(new TypeError('Failed to fetch')),
+-      )
+-      mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
++      spotifyCase(failsToFetch)
+       const { conversion } = await lookupLink(SPOTIFY_TRACK)
+       expect(conversion).toBeNull()
+     })
+ 
+-    it('make no iTunes request when the oEmbed request fails after two Odesli failures', async () => {
+-      const fetchMock = mockFetch((url) =>
+-        url === odesliUrl(SPOTIFY_TRACK.link)
+-          ? odesliRateLimited()
+-          : Promise.reject(new TypeError('Failed to fetch')),
+-      )
+-      const loads = mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
++    it.each([404, 429, 500])(
++      'return a null conversion when oEmbed answers %i',
++      async (status) => {
++        spotifyCase(answersStatus(status))
++        const { conversion } = await lookupLink(SPOTIFY_TRACK)
++        expect(conversion).toBeNull()
++      },
++    )
++
++    it('make exactly one request and no iTunes request when the oEmbed request fails', async () => {
++      const { fetchMock, loads } = spotifyCase(failsToFetch)
+       await lookupLink(SPOTIFY_TRACK)
+-      expect(fetchedUrls(fetchMock)).toEqual([
+-        odesliUrl(SPOTIFY_TRACK.link),
+-        odesliUrl(SPOTIFY_TRACK.link),
+-        spotifyOembedUrl(SPOTIFY_TRACK.link),
+-      ])
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+       expect(loads).toHaveLength(0)
+     })
++
++    it.each([404, 429, 500])(
++      'make exactly one request and no iTunes request when oEmbed answers %i',
++      async (status) => {
++        const { fetchMock, loads } = spotifyCase(answersStatus(status))
++        await lookupLink(SPOTIFY_TRACK)
++        expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
++        expect(loads).toHaveLength(0)
++      },
++    )
++
++    it('return the parsed link they were given when the oEmbed request fails', async () => {
++      spotifyCase(failsToFetch)
++      const { parsed } = await lookupLink(SPOTIFY_TRACK)
++      expect(parsed).toEqual(SPOTIFY_TRACK)
++    })
+   })
+ 
+-  describe('Spotify short links when Odesli fails', () => {
+-    const shortLinkFetch = (oembed: unknown) => (url: string) =>
+-      url === odesliUrl(SPOTIFY_SHORT.link)
+-        ? odesliFails()
+-        : url === spotifyOembedUrl(SPOTIFY_SHORT.link)
+-          ? jsonResponse(oembed)
+-          : Promise.reject(new Error(`unexpected fetch ${url}`))
++  describe('Spotify short links', () => {
++    // oEmbed answers the short link as `oembed`; any other fetch fails the test.
++    function shortLinkCase(
++      oembed: FetchAnswer,
++      itunes: JsonpOutcome = { data: fixture('itunes-search-songs.json') },
++    ) {
++      const fetchMock = mockFetchOnly({ [spotifyOembedUrl(SPOTIFY_SHORT.link)]: oembed })
++      const loads = mockJsonp(() => itunes)
++      return { fetchMock, loads }
++    }
++
++    it('fetch only the oEmbed for the short link, once', async () => {
++      const { fetchMock } = shortLinkCase(answer('spotify-oembed-track.json'))
++      await lookupLink(SPOTIFY_SHORT)
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_SHORT.link)])
++    })
+ 
+     it('return the parsed link resolved from the oEmbed player URL', async () => {
+-      mockFetch(shortLinkFetch(fixture('spotify-oembed-track.json')))
+-      mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
++      shortLinkCase(answer('spotify-oembed-track.json'))
+       const { parsed } = await lookupLink(SPOTIFY_SHORT)
+       expect(parsed).toEqual(SPOTIFY_TRACK)
+     })
+ 
+     it('use the resolved canonical link as the exact Spotify link', async () => {
+-      mockFetch(shortLinkFetch(fixture('spotify-oembed-track.json')))
+-      mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
++      shortLinkCase(answer('spotify-oembed-track.json'))
+       const { conversion } = await lookupLink(SPOTIFY_SHORT)
+       expect(conversion?.links.spotify).toBe(SPOTIFY_TRACK.link)
+       expect(conversion?.exact.spotify).toBe(true)
+     })
+ 
+     it('search iTunes albums when the short link resolves to an album', async () => {
+-      mockFetch(shortLinkFetch(fixture('spotify-oembed-album.json')))
+-      const loads = mockJsonp(() => ({ data: fixture('itunes-search-albums.json') }))
++      const { loads } = shortLinkCase(answer('spotify-oembed-album.json'), {
++        data: fixture('itunes-search-albums.json'),
++      })
+       await lookupLink(SPOTIFY_SHORT)
+       const expected = itunesSearchUrl('A Night At The Opera (2011 Remaster)', 'album')
+       expect(loads.map((l) => l.src.startsWith(expected))).toEqual([true])
+     })
+ 
+     it('return a null conversion and the unresolved link when oEmbed has no player', async () => {
+-      mockFetch(shortLinkFetch(fixture('spotify-oembed-no-player.json')))
+-      const loads = mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
++      const { fetchMock, loads } = shortLinkCase(answer('spotify-oembed-no-player.json'))
+       const { conversion, parsed } = await lookupLink(SPOTIFY_SHORT)
+       expect(conversion).toBeNull()
+       expect(parsed).toEqual(SPOTIFY_SHORT)
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_SHORT.link)])
+       expect(loads).toHaveLength(0)
+     })
+-  })
+ 
+-  describe('Odesli retry', () => {
+-    // First Odesli attempt fails as `first` does; every later one answers.
+-    function odesliFailsOnce(first: () => Response | Promise<Response>) {
+-      let calls = 0
+-      return mockFetch((url) => {
+-        if (url.startsWith(SPOTIFY_OEMBED_URL)) {
+-          return Promise.reject(new Error(`unexpected fetch ${url}`))
+-        }
+-        calls += 1
+-        return calls === 1 ? first() : jsonResponse(fixture('odesli-track.json'))
+-      })
+-    }
+-
+-    it('returns the Odesli result when the first attempt is a 429 and the second succeeds', async () => {
+-      odesliFailsOnce(odesliRateLimited)
+-      mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
+-      const { conversion } = await lookupLink(SPOTIFY_TRACK)
+-      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-track.json'))))
+-    })
+-
+-    it('returns the Odesli result when the first attempt fails to fetch and the second succeeds', async () => {
+-      odesliFailsOnce(() => Promise.reject(new TypeError('Failed to fetch')))
+-      mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
+-      const { conversion } = await lookupLink(SPOTIFY_TRACK)
+-      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-track.json'))))
+-    })
+-
+-    it('makes no oEmbed or iTunes request when the second attempt succeeds', async () => {
+-      const fetchMock = odesliFailsOnce(() => Promise.reject(new TypeError('Failed to fetch')))
+-      const loads = mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
+-      await lookupLink(SPOTIFY_TRACK)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(SPOTIFY_TRACK.link), odesliUrl(SPOTIFY_TRACK.link)])
+-      expect(loads).toHaveLength(0)
+-    })
+-
+-    it('retries an Apple link the same way before the iTunes lookup', async () => {
+-      const fetchMock = odesliFailsOnce(odesliRateLimited)
+-      const loads = mockJsonp(() => ({ data: fixture('itunes-lookup-song.json') }))
+-      const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(APPLE_TRACK.link), odesliUrl(APPLE_TRACK.link)])
++    it('return a null conversion and the unresolved link when the oEmbed request fails', async () => {
++      const { fetchMock, loads } = shortLinkCase(failsToFetch)
++      const { conversion, parsed } = await lookupLink(SPOTIFY_SHORT)
++      expect(conversion).toBeNull()
++      expect(parsed).toEqual(SPOTIFY_SHORT)
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_SHORT.link)])
+       expect(loads).toHaveLength(0)
+-      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-track.json'))))
+-    })
+-
+-    it('requests Odesli no more than twice when both attempts fail', async () => {
+-      const fetchMock = mockFetch((url) =>
+-        url.startsWith(SPOTIFY_OEMBED_URL)
+-          ? jsonResponse(fixture('spotify-oembed-track.json'))
+-          : odesliRateLimited(),
+-      )
+-      mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
+-      await lookupLink(SPOTIFY_TRACK)
+-      const odesliCalls = fetchedUrls(fetchMock).filter((u) => u === odesliUrl(SPOTIFY_TRACK.link))
+-      expect(odesliCalls).toHaveLength(2)
+     })
+   })
+ 
+-  describe('the reported Spotify link when Odesli is rate-limited twice', () => {
+-    // Odesli answers 429 twice, oEmbed answers with the reported response and
+-    // iTunes search answers with `itunes`.
+-    function reportedCase(itunes: JsonpOutcome = { data: fixture('itunes-search-aint-gettin-high.json') }) {
+-      const fetchMock = mockFetch((url) =>
+-        url === odesliUrl(REPORTED.link)
+-          ? odesliRateLimited()
+-          : url === spotifyOembedUrl(REPORTED.link)
+-            ? jsonResponse(fixture('spotify-oembed-aint-gettin-high.json'))
+-            : Promise.reject(new Error(`unexpected fetch ${url}`)),
+-      )
+-      const loads = mockJsonp(() => itunes)
+-      return { fetchMock, loads }
++  // PLAN-004 AC3/AC4: the reported link, now with no Odesli in front of it.
++  describe('the reported Spotify link', () => {
++    // oEmbed answers with the reported response and iTunes search answers with
++    // `itunes`. `requests` records every request, fetch or JSONP, in order.
++    function reportedCase(
++      itunes: JsonpOutcome = { data: fixture('itunes-search-aint-gettin-high.json') },
++      oembed: FetchAnswer = answer('spotify-oembed-aint-gettin-high.json'),
++    ) {
++      const requests: string[] = []
++      const fetchMock = mockFetchOnly({
++        [spotifyOembedUrl(REPORTED.link)]: () => {
++          requests.push(`fetch ${spotifyOembedUrl(REPORTED.link)}`)
++          return oembed()
++        },
++      })
++      const loads = mockJsonp((src) => {
++        requests.push(`jsonp ${src}`)
++        return itunes
++      })
++      return { fetchMock, loads, requests }
+     }
+ 
+-    it('requests Odesli twice, then oEmbed, then searches iTunes for the title', async () => {
+-      const { fetchMock, loads } = reportedCase()
++    it('fetches the oEmbed once, then makes one iTunes search over JSONP for the title, in that order', async () => {
++      const { fetchMock, loads, requests } = reportedCase()
+       await lookupLink(REPORTED)
+-      expect(fetchedUrls(fetchMock)).toEqual([
+-        odesliUrl(REPORTED.link),
+-        odesliUrl(REPORTED.link),
+-        spotifyOembedUrl(REPORTED.link),
+-      ])
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(REPORTED.link)])
+       expect(loads.map((l) => l.src.startsWith(itunesSearchUrl(REPORTED_TITLE, 'track')))).toEqual([true])
++      expect(requests).toEqual([`fetch ${spotifyOembedUrl(REPORTED.link)}`, `jsonp ${loads[0].src}`])
+     })
+ 
+     it('takes the title and artwork from oEmbed', async () => {
+@@ -527,391 +515,33 @@ describe('lookupLink', () => {
+       expect(conversion?.exact.apple).toBe(false)
+     })
+ 
+-    it('returns a null conversion when the oEmbed request fails too', async () => {
+-      mockFetch((url) =>
+-        url === odesliUrl(REPORTED.link) ? odesliRateLimited() : Promise.reject(new TypeError('Failed to fetch')),
+-      )
+-      mockJsonp(() => ({ data: fixture('itunes-search-aint-gettin-high.json') }))
+-      const { conversion } = await lookupLink(REPORTED)
+-      expect(conversion).toBeNull()
+-    })
+-  })
+-})
+-
+-// PLAN-003 T1 (AC1–AC5, AC8): one Odesli hop fills the platforms the first
+-// Odesli response lacks. The reported case is an Apple link to "Dirt" whose
+-// Odesli response has no Spotify link (odesli-apple-dirt.json); Odesli's
+-// answer for its YouTube Music link has one (odesli-ytm-dirt.json).
+-describe('lookupLink Odesli hop', () => {
+-  const DIRT: ParsedLink = {
+-    src: 'apple',
+-    kind: 'track',
+-    id: '6811936165',
+-    slug: 'dirt',
+-    link: 'https://music.apple.com/us/album/dirt/6811936164?i=6811936165',
+-  }
+-  const DIRT_FROM_SPOTIFY: ParsedLink = {
+-    src: 'spotify',
+-    kind: 'track',
+-    id: '0PlaceholderDirtTrack0',
+-    link: 'https://open.spotify.com/track/0PlaceholderDirtTrack0',
+-  }
+-  const DIRT_APPLE =
+-    'https://geo.music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m'
+-  const DIRT_YTM = 'https://music.youtube.com/watch?v=PLCHLDRdirt'
+-  const DIRT_YOUTUBE = 'https://www.youtube.com/watch?v=PLCHLDRdirt'
+-  const DIRT_SPOTIFY = 'https://open.spotify.com/track/0PlaceholderDirtTrack0'
+-  const DIRT_ARTIST = 'Placeholder Artist'
+-  const DIRT_ART =
+-    'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/aa/bb/cc/aabbccdd-placeholder/source/512x512bb.jpg'
+-  const DIRT_SPOTIFY_SEARCH = 'https://open.spotify.com/search/Dirt%20Placeholder%20Artist'
+-  const DIRT_APPLE_SEARCH = 'https://music.apple.com/us/search?term=Dirt%20Placeholder%20Artist'
+-  const HOP_URL = odesliUrl(DIRT_YTM)
+-
+-  type Answer = () => Response | Promise<Response>
+-  const answer = (name: string): Answer => () => jsonResponse(fixture(name))
+-  const answerBody = (body: unknown): Answer => () => jsonResponse(body)
+-  const failsToFetch: Answer = () => Promise.reject(new TypeError('Failed to fetch'))
+-
+-  // Odesli answers the source link with `first` and the hop URL with `hop`.
+-  // Any other request is unexpected; iTunes would answer if asked.
+-  function odesli(
+-    first: Answer,
+-    hop: Answer,
+-    { source = DIRT, hopUrl = HOP_URL }: { source?: ParsedLink; hopUrl?: string } = {},
+-  ) {
+-    const fetchMock = mockFetch((url) =>
+-      url === odesliUrl(source.link)
+-        ? first()
+-        : url === hopUrl
+-          ? hop()
+-          : Promise.reject(new Error(`unexpected fetch ${url}`)),
+-    )
+-    const loads = mockJsonp(() => ({ data: fixture('itunes-lookup-song.json') }))
+-    return { fetchMock, loads }
+-  }
+-
+-  const reportedCase = (hop: Answer = answer('odesli-ytm-dirt.json')) =>
+-    odesli(answer('odesli-apple-dirt.json'), hop)
+-
+-  describe('the reported Apple link, whose Odesli response lacks Spotify', () => {
+-    it("requests Odesli for the Apple link, then once for the first response's YouTube Music link", async () => {
+-      const { fetchMock } = reportedCase()
+-      await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), HOP_URL])
+-    })
+-
+-    it('makes no oEmbed or iTunes request', async () => {
+-      const { fetchMock, loads } = reportedCase()
+-      await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock).every((u) => u.startsWith('https://api.song.link/'))).toBe(true)
+-      expect(loads).toHaveLength(0)
+-    })
+-
+-    it("links Spotify to the hop response's Spotify track, tagged exact", async () => {
+-      reportedCase()
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY)
+-      expect(conversion?.exact.spotify).toBe(true)
+-    })
+-
+-    it("keeps the first response's Apple Music and YouTube Music links, tagged exact", async () => {
+-      reportedCase()
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.links.apple).toBe(DIRT_APPLE)
+-      expect(conversion?.links.ytm).toBe(DIRT_YTM)
+-      expect(conversion?.exact.apple).toBe(true)
+-      expect(conversion?.exact.ytm).toBe(true)
+-    })
+-
+-    it("takes the title, artist and art from the first response's entity", async () => {
+-      reportedCase()
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.title).toBe('Dirt')
+-      expect(conversion?.artist).toBe(DIRT_ARTIST)
+-      expect(conversion?.art).toBe(DIRT_ART)
+-    })
+-
+-    it('returns the parsed link it was given', async () => {
+-      reportedCase()
+-      const { parsed } = await lookupLink(DIRT)
+-      expect(parsed).toEqual(DIRT)
+-    })
+-  })
+-
+-  describe('when the hop fails', () => {
+-    const failures: [string, Answer][] = [
+-      ['fails to fetch', failsToFetch],
+-      ['answers 429', odesliRateLimited],
+-      ['has no Spotify link', answerBody(odesliWithout('odesli-ytm-dirt.json', 'spotify'))],
+-    ]
+-
+-    it.each(failures)('makes no further request of any kind when the hop %s', async (_, hop) => {
+-      const { fetchMock, loads } = reportedCase(hop)
+-      await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), HOP_URL])
+-      expect(loads).toHaveLength(0)
+-    })
+-
+-    it.each(failures)('returns the first response with search fallbacks when the hop %s', async (_, hop) => {
+-      reportedCase(hop)
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-apple-dirt.json'))))
+-    })
+-
+-    it.each(failures)('links Spotify to a search, not tagged exact, when the hop %s', async (_, hop) => {
+-      reportedCase(hop)
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY_SEARCH)
+-      expect(conversion?.exact.spotify).toBe(false)
+-    })
+-  })
+-
+-  // PLAN-003 AC3 (amended): a hop for a different song fills nothing.
+-  describe('when the hop response is for a different song', () => {
+-    const mismatch = () => reportedCase(answer('odesli-ytm-dirt-mismatch.json'))
+-
+-    it('makes no further request after the hop', async () => {
+-      const { fetchMock, loads } = mismatch()
+-      await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), HOP_URL])
+-      expect(loads).toHaveLength(0)
+-    })
+-
+-    it("keeps the first response's Apple Music and YouTube Music links", async () => {
+-      mismatch()
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.links.apple).toBe(DIRT_APPLE)
+-      expect(conversion?.links.ytm).toBe(DIRT_YTM)
+-    })
+-
+-    it("keeps the first response's title, artist and art", async () => {
+-      mismatch()
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.title).toBe('Dirt')
+-      expect(conversion?.artist).toBe(DIRT_ARTIST)
+-      expect(conversion?.art).toBe(DIRT_ART)
+-    })
+-
+-    it("does not use the other song's Spotify link; links Spotify to a search, not tagged exact", async () => {
+-      mismatch()
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY_SEARCH)
+-      expect(conversion?.exact).toEqual({ apple: true, spotify: false, ytm: true })
+-    })
+-
+-    it('returns the first response with search fallbacks', async () => {
+-      mismatch()
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-apple-dirt.json'))))
+-    })
+-  })
+-
+-  describe('matching the hop song to the first', () => {
+-    it.each(['DIRT', 'dirt', 'Dirt.', '  Dirt  '])(
+-      'links Spotify exactly when the hop title is "%s"',
+-      async (title) => {
+-        reportedCase(answerBody(ytmDirtWith({ title })))
+-        const { conversion } = await lookupLink(DIRT)
+-        expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY)
+-        expect(conversion?.exact.spotify).toBe(true)
+-      },
+-    )
+-
+-    it('links Spotify exactly when the hop artist differs only by case, punctuation and spacing', async () => {
+-      reportedCase(answerBody(ytmDirtWith({ artistName: 'PLACEHOLDER   artist.' })))
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY)
+-      expect(conversion?.exact.spotify).toBe(true)
+-    })
+-
+-    it('links Spotify to a search when the hop title is "Dirt (Live)"', async () => {
+-      reportedCase(answerBody(ytmDirtWith({ title: 'Dirt (Live)' })))
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY_SEARCH)
+-      expect(conversion?.exact.spotify).toBe(false)
+-    })
+-
+-    it('links Spotify to a search when the hop has the same title by another artist', async () => {
+-      reportedCase(answerBody(ytmDirtWith({ artistName: 'Some Other Artist' })))
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY_SEARCH)
+-      expect(conversion?.exact.spotify).toBe(false)
+-    })
+-
+-    it('links Spotify exactly when the hop has the same title and no artist', async () => {
+-      reportedCase(answerBody(ytmDirtWith({ artistName: '' })))
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY)
+-      expect(conversion?.exact.spotify).toBe(true)
+-    })
+-
+-    it('links Spotify to a search when the hop response has no entity', async () => {
+-      const noEntity = {
+-        ...fixture<object>('odesli-ytm-dirt.json'),
+-        entityUniqueId: undefined,
+-        entitiesByUniqueId: undefined,
+-      }
+-      const { fetchMock } = reportedCase(answerBody(noEntity))
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), HOP_URL])
+-      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-apple-dirt.json'))))
+-    })
+-  })
+-
+-  // PLAN-003 AC3 (amended): a malformed 200 body never makes lookupLink reject.
+-  describe('malformed Odesli bodies', () => {
+-    it('falls back to the iTunes lookup when the first Odesli body is null', async () => {
+-      const { loads } = odesli(answerBody(null), answer('odesli-ytm-dirt.json'))
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(loads.map((l) => l.src.startsWith(itunesLookupUrl(DIRT)))).toEqual([true])
+-      expect(conversion).toEqual(
+-        withSearchFallbacks(fromItunesLookup(fixture('itunes-lookup-song.json'), DIRT)),
+-      )
+-    })
+-
+-    it('makes no hop request when the first Odesli body is null', async () => {
+-      const { fetchMock } = odesli(answerBody(null), answer('odesli-ytm-dirt.json'))
+-      await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).not.toContain(HOP_URL)
+-    })
+-
+-    it('makes exactly two requests when the hop body is null', async () => {
+-      const { fetchMock, loads } = reportedCase(answerBody(null))
+-      await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), HOP_URL])
+-      expect(loads).toHaveLength(0)
+-    })
+-
+-    it('returns the first response with search fallbacks when the hop body is null', async () => {
+-      reportedCase(answerBody(null))
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-apple-dirt.json'))))
+-    })
+-  })
+-
+-  describe('choosing the hop source', () => {
+-    it('hops on the youtube link when the first response has no youtubeMusic link', async () => {
+-      const first = odesliWithout('odesli-apple-dirt.json', 'youtubeMusic')
+-      const youtubeHop = odesliUrl(DIRT_YOUTUBE)
+-      const { fetchMock } = odesli(answerBody(first), answer('odesli-ytm-dirt.json'), {
+-        hopUrl: youtubeHop,
+-      })
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), youtubeHop])
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY)
+-      expect(conversion?.exact.spotify).toBe(true)
+-    })
+-
+-    it('makes one Odesli request and links Spotify to a search when there is no hop source', async () => {
+-      const first = odesliWithout('odesli-apple-dirt.json', 'youtubeMusic', 'youtube')
+-      const { fetchMock, loads } = odesli(answerBody(first), answer('odesli-ytm-dirt.json'))
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link)])
+-      expect(loads).toHaveLength(0)
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY_SEARCH)
+-      expect(conversion?.exact.spotify).toBe(false)
+-    })
+-
+-    it('makes one Odesli request for odesli-partial.json, which has no hop source', async () => {
+-      const partial = fixture<object>('odesli-partial.json')
+-      const fetchMock = mockFetch(() =>
+-        jsonResponse({
+-          ...partial,
+-          entitiesByUniqueId: {
+-            'SPOTIFY_SONG::0000000000000000000000': { title: 'Song', artistName: 'Band' },
+-          },
+-        }),
+-      )
+-      const { conversion } = await lookupLink(SPOTIFY_TRACK)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(SPOTIFY_TRACK.link)])
+-      expect(conversion?.exact).toEqual({ apple: false, spotify: true, ytm: false })
+-    })
+-  })
+-
+-  describe('a Spotify link whose Odesli response lacks Apple Music', () => {
+-    const spotifyCase = (hop: Answer = answer('odesli-ytm-dirt.json')) =>
+-      odesli(answer('odesli-spotify-dirt-no-apple.json'), hop, { source: DIRT_FROM_SPOTIFY })
+-
+-    it("requests Odesli for the Spotify link, then for the first response's YouTube Music link", async () => {
+-      const { fetchMock, loads } = spotifyCase()
+-      await lookupLink(DIRT_FROM_SPOTIFY)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT_FROM_SPOTIFY.link), HOP_URL])
+-      expect(loads).toHaveLength(0)
+-    })
+-
+-    it("links Apple Music to the hop response's Apple Music URL, tagged exact", async () => {
+-      spotifyCase()
+-      const { conversion } = await lookupLink(DIRT_FROM_SPOTIFY)
+-      expect(conversion?.links.apple).toBe(DIRT_APPLE)
+-      expect(conversion?.exact.apple).toBe(true)
+-    })
+-
+-    it('keeps the Spotify link from the first response', async () => {
+-      spotifyCase()
+-      const { conversion } = await lookupLink(DIRT_FROM_SPOTIFY)
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY)
+-      expect(conversion?.exact.spotify).toBe(true)
+-    })
+-
+-    it('links Apple Music to a search, not tagged exact, when the hop has no Apple Music link', async () => {
+-      spotifyCase(answerBody(odesliWithout('odesli-ytm-dirt.json', 'appleMusic')))
+-      const { conversion } = await lookupLink(DIRT_FROM_SPOTIFY)
+-      expect(conversion?.links.apple).toBe(DIRT_APPLE_SEARCH)
++    it('offers no candidates and still a title-only Apple search when the iTunes JSONP load times out', async () => {
++      vi.useFakeTimers()
++      const { fetchMock, loads } = reportedCase('hang')
++      const result = lookupLink(REPORTED)
++      await vi.advanceTimersByTimeAsync(JSONP_TIMEOUT)
++      const { conversion } = await result
++      expect(conversion?.title).toBe(REPORTED_TITLE)
++      expect(conversion?.artist).toBe('')
++      expect(conversion?.candidates ?? []).toEqual([])
+       expect(conversion?.exact.apple).toBe(false)
++      expect(fetchedUrls(fetchMock)).toHaveLength(1)
++      expect(loads).toHaveLength(1)
+     })
+-    it('links Apple Music to a search, not tagged exact, when the hop is for a different song', async () => {
+-      const { fetchMock } = spotifyCase(answer('odesli-ytm-dirt-mismatch.json'))
+-      const { conversion } = await lookupLink(DIRT_FROM_SPOTIFY)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT_FROM_SPOTIFY.link), HOP_URL])
+-      expect(conversion?.links.apple).toBe(DIRT_APPLE_SEARCH)
+-      expect(conversion?.exact).toEqual({ apple: false, spotify: true, ytm: true })
+-    })
+-  })
+-
+-  describe('when no hop happens', () => {
+-    it('makes one Odesli request for an Apple link whose response has all three platforms', async () => {
+-      const fetchMock = mockFetch(() => jsonResponse(fixture('odesli-track.json')))
+-      const loads = mockJsonp(() => ({ data: {} }))
+-      await lookupLink(APPLE_TRACK)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(APPLE_TRACK.link)])
+-      expect(loads).toHaveLength(0)
+-    })
+-
+-    it('makes no hop request on the iTunes fallback after two Odesli failures', async () => {
+-      const { fetchMock, loads } = odesli(odesliRateLimited, answer('odesli-ytm-dirt.json'))
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), odesliUrl(DIRT.link)])
+-      expect(loads.map((l) => l.src.startsWith(itunesLookupUrl(DIRT)))).toEqual([true])
+-      expect(conversion?.links.apple).toBe(DIRT.link)
+-    })
+-  })
+ 
+-  describe('after the Odesli retry', () => {
+-    // The first Odesli attempt answers 429; later ones answer the reported response.
+-    function retryThenHop(hop: Answer) {
+-      let attempts = 0
+-      return odesli(() => {
+-        attempts += 1
+-        return attempts === 1 ? odesliRateLimited() : jsonResponse(fixture('odesli-apple-dirt.json'))
+-      }, hop)
+-    }
+-
+-    it('hops once after a successful retry and links Spotify exactly', async () => {
+-      const { fetchMock, loads } = retryThenHop(answer('odesli-ytm-dirt.json'))
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), odesliUrl(DIRT.link), HOP_URL])
+-      expect(loads).toHaveLength(0)
+-      expect(conversion?.links.spotify).toBe(DIRT_SPOTIFY)
+-      expect(conversion?.exact.spotify).toBe(true)
++    it('makes no further request after a failed iTunes load', async () => {
++      const { fetchMock, loads } = reportedCase('error')
++      await lookupLink(REPORTED)
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(REPORTED.link)])
++      expect(loads).toHaveLength(1)
+     })
+ 
+-    it('requests Odesli at most three times when the hop fails too', async () => {
+-      const { fetchMock, loads } = retryThenHop(odesliRateLimited)
+-      const { conversion } = await lookupLink(DIRT)
+-      expect(fetchedUrls(fetchMock)).toEqual([odesliUrl(DIRT.link), odesliUrl(DIRT.link), HOP_URL])
++    it('returns a null conversion after exactly one request when the oEmbed request fails', async () => {
++      const { fetchMock, loads } = reportedCase(undefined, failsToFetch)
++      const { conversion } = await lookupLink(REPORTED)
++      expect(conversion).toBeNull()
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(REPORTED.link)])
+       expect(loads).toHaveLength(0)
+-      expect(conversion).toEqual(withSearchFallbacks(fromOdesli(fixture('odesli-apple-dirt.json'))))
+     })
+   })
+ })
+diff --git a/tests/lib/lookup.test.ts b/tests/lib/lookup.test.ts
+index 6387df4..8cb5123 100644
+--- a/tests/lib/lookup.test.ts
++++ b/tests/lib/lookup.test.ts
+@@ -1,18 +1,14 @@
+ import { describe, expect, it } from 'vitest'
+ import {
+   fromItunesLookup,
+-  fromOdesli,
+   fromSpotifyFallback,
+   itunesLookupUrl,
+   itunesSearchUrl,
+-  odesliHopUrl,
+-  odesliUrl,
+   resolveSpotifyShortLink,
+   spotifyOembedUrl,
+-  withHopLinks,
+ } from '../../src/lib/lookup'
+-import type { Lookup, OdesliResponse, ParsedLink } from '../../src/lib/types'
+-import { fixture, odesliEntityWith, odesliWithout, ytmDirtWith } from '../support/fixtures'
++import type { ParsedLink } from '../../src/lib/types'
++import { fixture } from '../support/fixtures'
+ 
+ const SPOTIFY_TRACK: ParsedLink = {
+   src: 'spotify',
+@@ -48,59 +44,6 @@ const ARTWORK_300 =
+ const OEMBED_THUMB =
+   'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02ce4f1737bc8a646c8c4bd25a'
+ 
+-describe('odesliUrl', () => {
+-  it('points at the Odesli links endpoint with userCountry=US', () => {
+-    const url = new URL(odesliUrl(SPOTIFY_TRACK.link))
+-    expect(url.origin + url.pathname).toBe('https://api.song.link/v1-alpha.1/links')
+-    expect(url.searchParams.get('userCountry')).toBe('US')
+-  })
+-
+-  it('passes the link as the url param, encoded so its own query survives', () => {
+-    const url = new URL(odesliUrl(APPLE_TRACK.link))
+-    expect(url.searchParams.get('url')).toBe(APPLE_TRACK.link)
+-    expect(url.searchParams.has('i')).toBe(false)
+-  })
+-})
+-
+-describe('fromOdesli', () => {
+-  it('maps the entity title, artist and thumbnail and the three platform links', () => {
+-    expect(fromOdesli(fixture('odesli-track.json'))).toEqual({
+-      title: 'Bohemian Rhapsody - Remastered 2011',
+-      artist: 'Queen',
+-      art: 'https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a',
+-      links: {
+-        apple:
+-          'https://geo.music.apple.com/us/album/_/1440806041?i=1440806768&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m',
+-        spotify: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
+-        ytm: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
+-      },
+-    })
+-  })
+-
+-  it('gives undefined title, artist and art when the entity is missing', () => {
+-    const lookup = fromOdesli(fixture('odesli-partial.json'))
+-    expect(lookup.title).toBeUndefined()
+-    expect(lookup.artist).toBeUndefined()
+-    expect(lookup.art).toBeUndefined()
+-  })
+-
+-  it('gives undefined for platforms that have no link', () => {
+-    const lookup = fromOdesli(fixture('odesli-partial.json'))
+-    expect(lookup.links.spotify).toBe('https://open.spotify.com/track/0000000000000000000000')
+-    expect(lookup.links.apple).toBeUndefined()
+-    expect(lookup.links.ytm).toBeUndefined()
+-  })
+-
+-  it('does not throw on an empty body', () => {
+-    expect(() => fromOdesli(fixture('odesli-empty.json'))).not.toThrow()
+-    const lookup = fromOdesli(fixture('odesli-empty.json'))
+-    expect(lookup.title).toBeUndefined()
+-    expect(lookup.links.apple).toBeUndefined()
+-    expect(lookup.links.spotify).toBeUndefined()
+-    expect(lookup.links.ytm).toBeUndefined()
+-  })
+-})
+-
+ describe('itunesLookupUrl', () => {
+   it('looks up a track by id with entity=song in the US store', () => {
+     const url = new URL(itunesLookupUrl(APPLE_TRACK))
+@@ -217,7 +160,7 @@ describe('itunesSearchUrl', () => {
+ })
+ 
+ describe('fromSpotifyFallback', () => {
+-  // The reported case: Odesli was down, oEmbed has no artist, and the iTunes
++  // The reported case: oEmbed has no artist, and the iTunes
+   // title search returns several artists.
+   const REPORTED: ParsedLink = {
+     src: 'spotify',
+@@ -399,261 +342,3 @@ describe('fromSpotifyFallback', () => {
+     expect(lookup.candidates ?? []).toEqual([])
+   })
+ })
+-
+-// PLAN-003 T1: one Odesli hop to fill missing platform links.
+-// From odesli-apple-dirt.json (the reported case) and odesli-ytm-dirt.json.
+-const DIRT_APPLE =
+-  'https://geo.music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m'
+-const DIRT_YTM = 'https://music.youtube.com/watch?v=PLCHLDRdirt'
+-const DIRT_YOUTUBE = 'https://www.youtube.com/watch?v=PLCHLDRdirt'
+-const DIRT_SPOTIFY = 'https://open.spotify.com/track/0PlaceholderDirtTrack0'
+-const DIRT_ART =
+-  'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/aa/bb/cc/aabbccdd-placeholder/source/512x512bb.jpg'
+-
+-const HOP_SOURCE_URLS = {
+-  youtubeMusic: 'https://music.youtube.com/watch?v=hopYtMusic1',
+-  youtube: 'https://www.youtube.com/watch?v=hopYouTube01',
+-  deezer: 'https://www.deezer.com/track/1234567890',
+-  tidal: 'https://listen.tidal.com/track/123456789',
+-  amazonMusic: 'https://music.amazon.com/albums/B0PLACEHOLD?trackAsin=B0PLACETRAK',
+-}
+-
+-const BODY_URLS: Record<string, string> = {
+-  ...HOP_SOURCE_URLS,
+-  appleMusic: DIRT_APPLE,
+-  spotify: DIRT_SPOTIFY,
+-}
+-
+-// An Odesli body with a title and exactly the given platform links.
+-const odesliBody = (...platforms: string[]): OdesliResponse =>
+-  ({
+-    entityUniqueId: 'X',
+-    entitiesByUniqueId: { X: { title: 'Song', artistName: 'Band' } },
+-    linksByPlatform: Object.fromEntries(platforms.map((p) => [p, { url: BODY_URLS[p] }])),
+-  }) as OdesliResponse
+-
+-describe('odesliHopUrl', () => {
+-  it("returns the Odesli URL for the YouTube Music link in the reported Apple response, which lacks Spotify", () => {
+-    expect(odesliHopUrl(fixture('odesli-apple-dirt.json'))).toBe(odesliUrl(DIRT_YTM))
+-  })
+-
+-  it('returns the Odesli URL for the YouTube Music link when a Spotify response lacks Apple Music', () => {
+-    expect(odesliHopUrl(fixture('odesli-spotify-dirt-no-apple.json'))).toBe(odesliUrl(DIRT_YTM))
+-  })
+-
+-  it('returns null when the response has Apple Music, Spotify and YouTube Music links', () => {
+-    expect(odesliHopUrl(fixture('odesli-track.json'))).toBeNull()
+-  })
+-
+-  it('returns null when a platform is missing but there is no hop-source link', () => {
+-    expect(odesliHopUrl(fixture('odesli-partial.json'))).toBeNull()
+-  })
+-
+-  it('returns null for an empty body', () => {
+-    expect(odesliHopUrl(fixture('odesli-empty.json'))).toBeNull()
+-  })
+-
+-  it('prefers youtubeMusic over youtube, deezer, tidal and amazonMusic', () => {
+-    const body = odesliBody('appleMusic', 'amazonMusic', 'tidal', 'deezer', 'youtube', 'youtubeMusic')
+-    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.youtubeMusic))
+-  })
+-
+-  it('uses youtube when there is no youtubeMusic link', () => {
+-    const body = odesliBody('appleMusic', 'amazonMusic', 'tidal', 'deezer', 'youtube')
+-    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.youtube))
+-  })
+-
+-  it('uses the youtube link from the reported response when its youtubeMusic link is removed', () => {
+-    const body = odesliWithout<OdesliResponse>('odesli-apple-dirt.json', 'youtubeMusic')
+-    expect(odesliHopUrl(body)).toBe(odesliUrl(DIRT_YOUTUBE))
+-  })
+-
+-  it('uses deezer when there is no YouTube link of either kind', () => {
+-    const body = odesliBody('appleMusic', 'amazonMusic', 'tidal', 'deezer')
+-    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.deezer))
+-  })
+-
+-  it('uses tidal before amazonMusic', () => {
+-    const body = odesliBody('appleMusic', 'amazonMusic', 'tidal')
+-    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.tidal))
+-  })
+-
+-  it('uses amazonMusic when it is the only hop-source link', () => {
+-    const body = odesliBody('appleMusic', 'amazonMusic')
+-    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.amazonMusic))
+-  })
+-
+-  it('never uses the appleMusic or spotify link as the hop source', () => {
+-    expect(odesliHopUrl(odesliBody('appleMusic', 'spotify'))).toBeNull()
+-  })
+-
+-  it('returns null when the reported response has no YouTube links either', () => {
+-    const body = odesliWithout<OdesliResponse>('odesli-apple-dirt.json', 'youtubeMusic', 'youtube')
+-    expect(odesliHopUrl(body)).toBeNull()
+-  })
+-
+-  it('hops when only YouTube Music is missing and another hop source exists', () => {
+-    const body = odesliBody('appleMusic', 'spotify', 'deezer')
+-    expect(odesliHopUrl(body)).toBe(odesliUrl(HOP_SOURCE_URLS.deezer))
+-  })
+-})
+-
+-// PLAN-003 AC3 (amended, escalation ruling): withHopLinks takes the raw hop
+-// body and fills a platform only when the entity behind that platform's link
+-// is the same song as the first lookup, never judged by the hop's main entity.
+-describe('withHopLinks', () => {
+-  const first = () => fromOdesli(fixture('odesli-apple-dirt.json'))
+-  const ytmDirt = () => fixture<OdesliResponse>('odesli-ytm-dirt.json')
+-  const mismatchHop = () => fixture<OdesliResponse>('odesli-ytm-dirt-mismatch.json')
+-  const SPOTIFY_ENTITY = 'SPOTIFY_SONG::0PlaceholderDirtTrack0'
+-  const LIVE_SPOTIFY_ENTITY = 'SPOTIFY_SONG::0PlaceholderDirtLive00'
+-  const LIVE_SPOTIFY = 'https://open.spotify.com/track/0PlaceholderDirtLive00'
+-
+-  it('fills the Spotify link the first lookup lacks from the hop', () => {
+-    const merged = withHopLinks(first(), ytmDirt())
+-    expect(merged.links).toEqual({ apple: DIRT_APPLE, spotify: DIRT_SPOTIFY, ytm: DIRT_YTM })
+-  })
+-
+-  // The hop's main entity is the YouTube video, whose artist is the channel
+-  // "Placeholder Artist - Topic"; the Spotify link's entity is the song itself.
+-  it('fills Spotify when the main entity artist is a "- Topic" channel but the Spotify link\'s entity matches', () => {
+-    const hop = ytmDirt()
+-    expect(hop.entitiesByUniqueId?.[hop.entityUniqueId!]?.artistName).toBe('Placeholder Artist - Topic')
+-    expect(withHopLinks(first(), hop).links.spotify).toBe(DIRT_SPOTIFY)
+-  })
+-
+-  it('fills nothing when the main entity matches but the Spotify link\'s entity is "Dirt (Live)"', () => {
+-    const hop = ytmDirtWith<OdesliResponse>({ title: 'Dirt (Live)' }, SPOTIFY_ENTITY)
+-    expect(withHopLinks(first(), hop)).toEqual(first())
+-  })
+-
+-  it('keeps the first Apple Music and YouTube Music links when the hop has different ones', () => {
+-    const hop = odesliEntityWith<OdesliResponse>(
+-      'odesli-ytm-dirt-mismatch.json',
+-      { title: 'Dirt', artistName: 'Placeholder Artist' },
+-      LIVE_SPOTIFY_ENTITY,
+-    )
+-    const merged = withHopLinks(first(), hop)
+-    expect(merged.links).toEqual({ apple: DIRT_APPLE, spotify: LIVE_SPOTIFY, ytm: DIRT_YTM })
+-  })
+-
+-  it("keeps the first lookup's title, artist and art when the hop's differ in case and art", () => {
+-    const hop = ytmDirtWith<OdesliResponse>({ title: 'DIRT', artistName: 'placeholder artist' })
+-    const merged = withHopLinks(first(), hop)
+-    expect(merged.title).toBe('Dirt')
+-    expect(merged.artist).toBe('Placeholder Artist')
+-    expect(merged.art).toBe(DIRT_ART)
+-  })
+-
+-  it('fills nothing from a hop for a different song (odesli-ytm-dirt-mismatch.json)', () => {
+-    expect(withHopLinks(first(), mismatchHop())).toEqual(first())
+-  })
+-
+-  it("keeps the first lookup's title, artist and art when the hop is for a different song", () => {
+-    const merged = withHopLinks(first(), mismatchHop())
+-    expect(merged.title).toBe('Dirt')
+-    expect(merged.artist).toBe('Placeholder Artist')
+-    expect(merged.art).toBe(DIRT_ART)
+-  })
+-
+-  it('fills nothing when the hop title differs, even with the same artist', () => {
+-    const hop = ytmDirtWith<OdesliResponse>({ title: 'Dirt (Live)' })
+-    expect(withHopLinks(first(), hop)).toEqual(first())
+-  })
+-
+-  it('fills nothing when both artists are given and differ, even with the same title', () => {
+-    const hop = ytmDirtWith<OdesliResponse>({ artistName: 'Some Other Artist' })
+-    expect(withHopLinks(first(), hop)).toEqual(first())
+-  })
+-
+-  it.each([
+-    ['upper case', 'DIRT'],
+-    ['lower case', 'dirt'],
+-    ['punctuation', 'Dirt!'],
+-    ['surrounding whitespace', '  Dirt  '],
+-  ])('fills the missing link when the hop title differs only by %s', (_, title) => {
+-    const merged = withHopLinks(first(), ytmDirtWith<OdesliResponse>({ title }))
+-    expect(merged.links.spotify).toBe(DIRT_SPOTIFY)
+-  })
+-
+-  it('fills the missing link when the hop artist differs only by case, punctuation and repeated spaces', () => {
+-    const hop = ytmDirtWith<OdesliResponse>({ artistName: 'PLACEHOLDER   artist.' })
+-    expect(withHopLinks(first(), hop).links.spotify).toBe(DIRT_SPOTIFY)
+-  })
+-
+-  it("matches \"Ain't\" in the first title with \"Aint\" in the hop's", () => {
+-    const aint: Lookup = { title: "Ain't Gettin' High", artist: 'Placeholder Artist', links: {} }
+-    const merged = withHopLinks(aint, ytmDirtWith<OdesliResponse>({ title: 'Aint Gettin High' }))
+-    expect(merged.links.spotify).toBe(DIRT_SPOTIFY)
+-  })
+-
+-  it('compares titles only when the first lookup has no artist', () => {
+-    const hop = ytmDirtWith<OdesliResponse>({ artistName: 'Some Other Artist' })
+-    const merged = withHopLinks({ ...first(), artist: '' }, hop)
+-    expect(merged.links.spotify).toBe(DIRT_SPOTIFY)
+-  })
+-
+-  it('compares titles only when the hop has no artist', () => {
+-    const merged = withHopLinks(first(), ytmDirtWith<OdesliResponse>({ artistName: '' }))
+-    expect(merged.links.spotify).toBe(DIRT_SPOTIFY)
+-  })
+-
+-  it("fills nothing when the link's entity is missing", () => {
+-    const hop = { ...ytmDirt(), entitiesByUniqueId: undefined }
+-    expect(withHopLinks(first(), hop)).toEqual(first())
+-  })
+-
+-  it('fills nothing when the link names no entity', () => {
+-    const hop = ytmDirt()
+-    const linksByPlatform = { ...hop.linksByPlatform, spotify: { url: DIRT_SPOTIFY } }
+-    expect(withHopLinks(first(), { ...hop, linksByPlatform })).toEqual(first())
+-  })
+-
+-  it("fills nothing when the link's entity has no title", () => {
+-    const hop = ytmDirtWith<OdesliResponse>({ title: undefined }, SPOTIFY_ENTITY)
+-    expect(withHopLinks(first(), hop)).toEqual(first())
+-  })
+-
+-  it('fills nothing when the first lookup has no title', () => {
+-    const bare: Lookup = { links: { apple: DIRT_APPLE } }
+-    expect(withHopLinks(bare, ytmDirt())).toEqual(bare)
+-  })
+-
+-  it("keeps the first lookup's candidates", () => {
+-    const candidates = [{ artist: 'Placeholder Artist', title: 'Dirt', url: DIRT_APPLE }]
+-    const merged = withHopLinks({ ...first(), candidates }, ytmDirt())
+-    expect(merged.candidates).toEqual(candidates)
+-  })
+-
+-  it('leaves a platform missing when the hop lacks it too', () => {
+-    const merged = withHopLinks(first(), odesliWithout<OdesliResponse>('odesli-ytm-dirt.json', 'spotify'))
+-    expect(merged.links.spotify).toBeUndefined()
+-    expect(merged.links.apple).toBe(DIRT_APPLE)
+-    expect(merged.links.ytm).toBe(DIRT_YTM)
+-  })
+-
+-  it('fills a missing Apple Music link for a Spotify-source lookup', () => {
+-    const spotifyFirst = fromOdesli(fixture('odesli-spotify-dirt-no-apple.json'))
+-    const merged = withHopLinks(spotifyFirst, ytmDirt())
+-    expect(merged.links).toEqual({ apple: DIRT_APPLE, spotify: DIRT_SPOTIFY, ytm: DIRT_YTM })
+-  })
+-
+-  it('fills no Apple Music link for a Spotify-source lookup from a hop for a different song', () => {
+-    const spotifyFirst = fromOdesli(fixture('odesli-spotify-dirt-no-apple.json'))
+-    expect(withHopLinks(spotifyFirst, mismatchHop())).toEqual(spotifyFirst)
+-  })
+-
+-  it('returns the first lookup unchanged when the hop has no links', () => {
+-    expect(withHopLinks(first(), fixture<OdesliResponse>('odesli-empty.json'))).toEqual(first())
+-  })
+-
+-  it('does not mutate either input', () => {
+-    const a = first()
+-    const b = ytmDirt()
+-    const aBefore = structuredClone(a)
+-    const bBefore = structuredClone(b)
+-    withHopLinks(a, b)
+-    expect(a).toEqual(aBefore)
+-    expect(b).toEqual(bBefore)
+-  })
+-})
+diff --git a/tests/lib/purity.test.ts b/tests/lib/purity.test.ts
+index c08754c..30fcb70 100644
+--- a/tests/lib/purity.test.ts
++++ b/tests/lib/purity.test.ts
+@@ -1,5 +1,5 @@
+-import { readFileSync } from 'node:fs'
+-import { resolve } from 'node:path'
++import { readFileSync, readdirSync, statSync } from 'node:fs'
++import { join, resolve } from 'node:path'
+ import { describe, expect, it } from 'vitest'
+ 
+ // AC15: the link, share, text and lookup modules are pure (no DOM, storage or
+@@ -20,3 +20,21 @@ describe.each(PURE_MODULES)('src/lib/%s', (file) => {
+     expect(source(file)).not.toMatch(/['"`]https?:\/\//)
+   })
+ })
++
++// PLAN-004 AC1: Odesli is gone. No file under src/ names it or its host, in
++// code, comments or user-facing text.
++const SRC = resolve(process.cwd(), 'src')
++const srcFiles = readdirSync(SRC, { recursive: true, encoding: 'utf8' }).filter((file) =>
++  statSync(join(SRC, file)).isFile(),
++)
++
++describe('src/', () => {
++  it('has source files to check', () => {
++    expect(srcFiles).toContain('lib/api.ts')
++  })
++
++  it.each(srcFiles)('src/%s does not mention Odesli or song.link', (file) => {
++    const text = readFileSync(join(SRC, file), 'utf8')
++    expect(text.match(/odesli|song\.link/gi)).toBeNull()
++  })
++})
+diff --git a/tests/support/fixtures.ts b/tests/support/fixtures.ts
+index 3ac177b..5ec0229 100644
+--- a/tests/support/fixtures.ts
++++ b/tests/support/fixtures.ts
+@@ -7,35 +7,3 @@ import { resolve } from 'node:path'
+ export function fixture<T>(name: string): T {
+   return JSON.parse(readFileSync(resolve(process.cwd(), 'tests/support/fixtures', name), 'utf8')) as T
+ }
+-
+-type OdesliFixture = { linksByPlatform?: Record<string, unknown> }
+-
+-// An Odesli fixture with some `linksByPlatform` entries removed, for the
+-// responses that differ from a recorded one only by a missing platform.
+-export function odesliWithout<T extends OdesliFixture>(name: string, ...platforms: string[]): T {
+-  const body = fixture<T>(name)
+-  const linksByPlatform = { ...body.linksByPlatform }
+-  for (const platform of platforms) delete linksByPlatform[platform]
+-  return { ...body, linksByPlatform }
+-}
+-
+-type OdesliEntityFixture = { title?: string; artistName?: string }
+-type OdesliEntitiesFixture = { entitiesByUniqueId: Record<string, OdesliEntityFixture> }
+-
+-// An Odesli fixture with entity fields replaced: on the one entity `entityId`
+-// names, or on every entity when it is left out. A field set to undefined is
+-// cleared.
+-export function odesliEntityWith<T>(name: string, changes: OdesliEntityFixture, entityId?: string): T {
+-  const body = fixture<OdesliEntitiesFixture>(name)
+-  const entitiesByUniqueId = Object.fromEntries(
+-    Object.entries(body.entitiesByUniqueId).map(([id, entity]) => [
+-      id,
+-      entityId === undefined || id === entityId ? { ...entity, ...changes } : entity,
+-    ]),
+-  )
+-  return { ...body, entitiesByUniqueId } as T
+-}
+-
+-// odesli-ytm-dirt.json (the hop for the reported case) with entity fields replaced.
+-export const ytmDirtWith = <T>(changes: OdesliEntityFixture, entityId?: string): T =>
+-  odesliEntityWith<T>('odesli-ytm-dirt.json', changes, entityId)
+diff --git a/tests/support/fixtures/odesli-apple-dirt.json b/tests/support/fixtures/odesli-apple-dirt.json
+deleted file mode 100644
+index 037c218..0000000
+--- a/tests/support/fixtures/odesli-apple-dirt.json
++++ /dev/null
+@@ -1,56 +0,0 @@
+-{
+-  "_comment": "Odesli response for the reported Apple link (album 6811936164, i=6811936165). The Apple IDs are real; the artist name, artwork path and YouTube video ID are placeholders. No spotify link, as reported.",
+-  "entityUniqueId": "ITUNES_SONG::6811936165",
+-  "userCountry": "US",
+-  "pageUrl": "https://song.link/us/i/6811936165",
+-  "entitiesByUniqueId": {
+-    "ITUNES_SONG::6811936165": {
+-      "id": "6811936165",
+-      "type": "song",
+-      "title": "Dirt",
+-      "artistName": "Placeholder Artist",
+-      "thumbnailUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/aa/bb/cc/aabbccdd-placeholder/source/512x512bb.jpg",
+-      "thumbnailWidth": 512,
+-      "thumbnailHeight": 512,
+-      "apiProvider": "itunes",
+-      "platforms": ["appleMusic", "itunes"]
+-    },
+-    "YOUTUBE_VIDEO::PLCHLDRdirt": {
+-      "id": "PLCHLDRdirt",
+-      "type": "song",
+-      "title": "Dirt",
+-      "artistName": "Placeholder Artist - Topic",
+-      "thumbnailUrl": "https://i.ytimg.com/vi/PLCHLDRdirt/hqdefault.jpg",
+-      "thumbnailWidth": 480,
+-      "thumbnailHeight": 360,
+-      "apiProvider": "youtube",
+-      "platforms": ["youtube", "youtubeMusic"]
+-    }
+-  },
+-  "linksByPlatform": {
+-    "appleMusic": {
+-      "country": "US",
+-      "url": "https://geo.music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m",
+-      "nativeAppUriMobile": "music://music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_uri_m&itscg=30200&itsct=odsl_m",
+-      "nativeAppUriDesktop": "itms://music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_uri_d&itscg=30200&itsct=odsl_m",
+-      "entityUniqueId": "ITUNES_SONG::6811936165"
+-    },
+-    "itunes": {
+-      "country": "US",
+-      "url": "https://geo.music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=itunes&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m",
+-      "nativeAppUriMobile": "itmss://music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=itunes&ls=1&at=1000lHKX&ct=api_uri_m&itscg=30200&itsct=odsl_m",
+-      "nativeAppUriDesktop": "itmss://music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=itunes&ls=1&at=1000lHKX&ct=api_uri_d&itscg=30200&itsct=odsl_m",
+-      "entityUniqueId": "ITUNES_SONG::6811936165"
+-    },
+-    "youtube": {
+-      "country": "US",
+-      "url": "https://www.youtube.com/watch?v=PLCHLDRdirt",
+-      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRdirt"
+-    },
+-    "youtubeMusic": {
+-      "country": "US",
+-      "url": "https://music.youtube.com/watch?v=PLCHLDRdirt",
+-      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRdirt"
+-    }
+-  }
+-}
+diff --git a/tests/support/fixtures/odesli-empty.json b/tests/support/fixtures/odesli-empty.json
+deleted file mode 100644
+index 0967ef4..0000000
+--- a/tests/support/fixtures/odesli-empty.json
++++ /dev/null
+@@ -1 +0,0 @@
+-{}
+diff --git a/tests/support/fixtures/odesli-partial.json b/tests/support/fixtures/odesli-partial.json
+deleted file mode 100644
+index 9698c23..0000000
+--- a/tests/support/fixtures/odesli-partial.json
++++ /dev/null
+@@ -1,13 +0,0 @@
+-{
+-  "entityUniqueId": "SPOTIFY_SONG::0000000000000000000000",
+-  "userCountry": "US",
+-  "pageUrl": "https://song.link/s/0000000000000000000000",
+-  "entitiesByUniqueId": {},
+-  "linksByPlatform": {
+-    "spotify": {
+-      "country": "US",
+-      "url": "https://open.spotify.com/track/0000000000000000000000",
+-      "entityUniqueId": "SPOTIFY_SONG::0000000000000000000000"
+-    }
+-  }
+-}
+diff --git a/tests/support/fixtures/odesli-spotify-dirt-no-apple.json b/tests/support/fixtures/odesli-spotify-dirt-no-apple.json
+deleted file mode 100644
+index 5069cca..0000000
+--- a/tests/support/fixtures/odesli-spotify-dirt-no-apple.json
++++ /dev/null
+@@ -1,48 +0,0 @@
+-{
+-  "_comment": "Odesli response for a Spotify link to Dirt that lacks appleMusic (AC4). The artist name, Spotify track ID and YouTube video ID are placeholders.",
+-  "entityUniqueId": "SPOTIFY_SONG::0PlaceholderDirtTrack0",
+-  "userCountry": "US",
+-  "pageUrl": "https://song.link/s/0PlaceholderDirtTrack0",
+-  "entitiesByUniqueId": {
+-    "SPOTIFY_SONG::0PlaceholderDirtTrack0": {
+-      "id": "0PlaceholderDirtTrack0",
+-      "type": "song",
+-      "title": "Dirt",
+-      "artistName": "Placeholder Artist",
+-      "thumbnailUrl": "https://i.scdn.co/image/ab67616d0000b273placeholderdirt000000000",
+-      "thumbnailWidth": 640,
+-      "thumbnailHeight": 640,
+-      "apiProvider": "spotify",
+-      "platforms": ["spotify"]
+-    },
+-    "YOUTUBE_VIDEO::PLCHLDRdirt": {
+-      "id": "PLCHLDRdirt",
+-      "type": "song",
+-      "title": "Dirt",
+-      "artistName": "Placeholder Artist - Topic",
+-      "thumbnailUrl": "https://i.ytimg.com/vi/PLCHLDRdirt/hqdefault.jpg",
+-      "thumbnailWidth": 480,
+-      "thumbnailHeight": 360,
+-      "apiProvider": "youtube",
+-      "platforms": ["youtube", "youtubeMusic"]
+-    }
+-  },
+-  "linksByPlatform": {
+-    "spotify": {
+-      "country": "US",
+-      "url": "https://open.spotify.com/track/0PlaceholderDirtTrack0",
+-      "nativeAppUriDesktop": "spotify:track:0PlaceholderDirtTrack0",
+-      "entityUniqueId": "SPOTIFY_SONG::0PlaceholderDirtTrack0"
+-    },
+-    "youtube": {
+-      "country": "US",
+-      "url": "https://www.youtube.com/watch?v=PLCHLDRdirt",
+-      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRdirt"
+-    },
+-    "youtubeMusic": {
+-      "country": "US",
+-      "url": "https://music.youtube.com/watch?v=PLCHLDRdirt",
+-      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRdirt"
+-    }
+-  }
+-}
+diff --git a/tests/support/fixtures/odesli-track.json b/tests/support/fixtures/odesli-track.json
+deleted file mode 100644
+index ec38e12..0000000
+--- a/tests/support/fixtures/odesli-track.json
++++ /dev/null
+@@ -1,53 +0,0 @@
+-{
+-  "entityUniqueId": "SPOTIFY_SONG::4u7EnebtmKWzUH433cf5Qv",
+-  "userCountry": "US",
+-  "pageUrl": "https://song.link/s/4u7EnebtmKWzUH433cf5Qv",
+-  "entitiesByUniqueId": {
+-    "SPOTIFY_SONG::4u7EnebtmKWzUH433cf5Qv": {
+-      "id": "4u7EnebtmKWzUH433cf5Qv",
+-      "type": "song",
+-      "title": "Bohemian Rhapsody - Remastered 2011",
+-      "artistName": "Queen",
+-      "thumbnailUrl": "https://i.scdn.co/image/ab67616d0000b273ce4f1737bc8a646c8c4bd25a",
+-      "thumbnailWidth": 640,
+-      "thumbnailHeight": 640,
+-      "apiProvider": "spotify",
+-      "platforms": ["spotify"]
+-    },
+-    "ITUNES_SONG::1440806768": {
+-      "id": "1440806768",
+-      "type": "song",
+-      "title": "Bohemian Rhapsody",
+-      "artistName": "Queen",
+-      "thumbnailUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b-9f7a-8f6d-0b0e-1d1c1b1a1f1e/source/512x512bb.jpg",
+-      "thumbnailWidth": 512,
+-      "thumbnailHeight": 512,
+-      "apiProvider": "itunes",
+-      "platforms": ["appleMusic", "itunes"]
+-    }
+-  },
+-  "linksByPlatform": {
+-    "appleMusic": {
+-      "country": "US",
+-      "url": "https://geo.music.apple.com/us/album/_/1440806041?i=1440806768&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m",
+-      "nativeAppUriMobile": "music://music.apple.com/us/album/_/1440806041?i=1440806768&mt=1&app=music",
+-      "entityUniqueId": "ITUNES_SONG::1440806768"
+-    },
+-    "spotify": {
+-      "country": "US",
+-      "url": "https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv",
+-      "nativeAppUriDesktop": "spotify:track:4u7EnebtmKWzUH433cf5Qv",
+-      "entityUniqueId": "SPOTIFY_SONG::4u7EnebtmKWzUH433cf5Qv"
+-    },
+-    "youtube": {
+-      "country": "US",
+-      "url": "https://www.youtube.com/watch?v=fJ9rUzIMcZQ",
+-      "entityUniqueId": "YOUTUBE_VIDEO::fJ9rUzIMcZQ"
+-    },
+-    "youtubeMusic": {
+-      "country": "US",
+-      "url": "https://music.youtube.com/watch?v=fJ9rUzIMcZQ",
+-      "entityUniqueId": "YOUTUBE_VIDEO::fJ9rUzIMcZQ"
+-    }
+-  }
+-}
+diff --git a/tests/support/fixtures/odesli-ytm-dirt-mismatch.json b/tests/support/fixtures/odesli-ytm-dirt-mismatch.json
+deleted file mode 100644
+index e8ca149..0000000
+--- a/tests/support/fixtures/odesli-ytm-dirt-mismatch.json
++++ /dev/null
+@@ -1,53 +0,0 @@
+-{
+-  "_comment": "A hop response for the YouTube Music link from odesli-apple-dirt.json that disagrees with the first response: different Apple and YouTube Music URLs, title and artist. Every ID and name here is a placeholder.",
+-  "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRlive",
+-  "userCountry": "US",
+-  "pageUrl": "https://song.link/y/PLCHLDRlive",
+-  "entitiesByUniqueId": {
+-    "YOUTUBE_VIDEO::PLCHLDRlive": {
+-      "id": "PLCHLDRlive",
+-      "type": "song",
+-      "title": "Dirt (Live)",
+-      "artistName": "Some Other Artist",
+-      "thumbnailUrl": "https://i.ytimg.com/vi/PLCHLDRlive/hqdefault.jpg",
+-      "thumbnailWidth": 480,
+-      "thumbnailHeight": 360,
+-      "apiProvider": "youtube",
+-      "platforms": ["youtube", "youtubeMusic"]
+-    },
+-    "SPOTIFY_SONG::0PlaceholderDirtLive00": {
+-      "id": "0PlaceholderDirtLive00",
+-      "type": "song",
+-      "title": "Dirt (Live)",
+-      "artistName": "Some Other Artist",
+-      "thumbnailUrl": "https://i.scdn.co/image/ab67616d0000b273placeholderdirtlive0000",
+-      "thumbnailWidth": 640,
+-      "thumbnailHeight": 640,
+-      "apiProvider": "spotify",
+-      "platforms": ["spotify"]
+-    }
+-  },
+-  "linksByPlatform": {
+-    "appleMusic": {
+-      "country": "US",
+-      "url": "https://geo.music.apple.com/us/album/_/6899999990?i=6899999991&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m",
+-      "entityUniqueId": "ITUNES_SONG::6899999991"
+-    },
+-    "spotify": {
+-      "country": "US",
+-      "url": "https://open.spotify.com/track/0PlaceholderDirtLive00",
+-      "nativeAppUriDesktop": "spotify:track:0PlaceholderDirtLive00",
+-      "entityUniqueId": "SPOTIFY_SONG::0PlaceholderDirtLive00"
+-    },
+-    "youtube": {
+-      "country": "US",
+-      "url": "https://www.youtube.com/watch?v=PLCHLDRlive",
+-      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRlive"
+-    },
+-    "youtubeMusic": {
+-      "country": "US",
+-      "url": "https://music.youtube.com/watch?v=PLCHLDRlive",
+-      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRlive"
+-    }
+-  }
+-}
+diff --git a/tests/support/fixtures/odesli-ytm-dirt.json b/tests/support/fixtures/odesli-ytm-dirt.json
+deleted file mode 100644
+index 1e856e8..0000000
+--- a/tests/support/fixtures/odesli-ytm-dirt.json
++++ /dev/null
+@@ -1,65 +0,0 @@
+-{
+-  "_comment": "Odesli response for the YouTube Music link from odesli-apple-dirt.json (the hop). The Apple IDs are real; the artist name, YouTube video ID and Spotify track ID are placeholders.",
+-  "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRdirt",
+-  "userCountry": "US",
+-  "pageUrl": "https://song.link/y/PLCHLDRdirt",
+-  "entitiesByUniqueId": {
+-    "YOUTUBE_VIDEO::PLCHLDRdirt": {
+-      "id": "PLCHLDRdirt",
+-      "type": "song",
+-      "title": "Dirt",
+-      "artistName": "Placeholder Artist - Topic",
+-      "thumbnailUrl": "https://i.ytimg.com/vi/PLCHLDRdirt/hqdefault.jpg",
+-      "thumbnailWidth": 480,
+-      "thumbnailHeight": 360,
+-      "apiProvider": "youtube",
+-      "platforms": ["youtube", "youtubeMusic"]
+-    },
+-    "SPOTIFY_SONG::0PlaceholderDirtTrack0": {
+-      "id": "0PlaceholderDirtTrack0",
+-      "type": "song",
+-      "title": "Dirt",
+-      "artistName": "Placeholder Artist",
+-      "thumbnailUrl": "https://i.scdn.co/image/ab67616d0000b273placeholderdirt000000000",
+-      "thumbnailWidth": 640,
+-      "thumbnailHeight": 640,
+-      "apiProvider": "spotify",
+-      "platforms": ["spotify"]
+-    },
+-    "ITUNES_SONG::6811936165": {
+-      "id": "6811936165",
+-      "type": "song",
+-      "title": "Dirt",
+-      "artistName": "Placeholder Artist",
+-      "thumbnailUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/aa/bb/cc/aabbccdd-placeholder/source/512x512bb.jpg",
+-      "thumbnailWidth": 512,
+-      "thumbnailHeight": 512,
+-      "apiProvider": "itunes",
+-      "platforms": ["appleMusic", "itunes"]
+-    }
+-  },
+-  "linksByPlatform": {
+-    "appleMusic": {
+-      "country": "US",
+-      "url": "https://geo.music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_http&itscg=30200&itsct=odsl_m",
+-      "nativeAppUriMobile": "music://music.apple.com/us/album/_/6811936164?i=6811936165&mt=1&app=music&ls=1&at=1000lHKX&ct=api_uri_m&itscg=30200&itsct=odsl_m",
+-      "entityUniqueId": "ITUNES_SONG::6811936165"
+-    },
+-    "spotify": {
+-      "country": "US",
+-      "url": "https://open.spotify.com/track/0PlaceholderDirtTrack0",
+-      "nativeAppUriDesktop": "spotify:track:0PlaceholderDirtTrack0",
+-      "entityUniqueId": "SPOTIFY_SONG::0PlaceholderDirtTrack0"
+-    },
+-    "youtube": {
+-      "country": "US",
+-      "url": "https://www.youtube.com/watch?v=PLCHLDRdirt",
+-      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRdirt"
+-    },
+-    "youtubeMusic": {
+-      "country": "US",
+-      "url": "https://music.youtube.com/watch?v=PLCHLDRdirt",
+-      "entityUniqueId": "YOUTUBE_VIDEO::PLCHLDRdirt"
+-    }
+-  }
+-}
+diff --git a/tests/support/network.ts b/tests/support/network.ts
+index 001ff40..a986d3d 100644
+--- a/tests/support/network.ts
++++ b/tests/support/network.ts
+@@ -30,12 +30,41 @@ const requestUrl = (input: RequestInfo | URL): string =>
+ 
+ // Replaces global fetch. `respond` gets the request URL and returns the
+ // response (or a promise of one, or throws/rejects for a network failure).
+-export function mockFetch(respond: (url: string) => Response | Promise<Response>) {
++function mockFetch(respond: (url: string) => Response | Promise<Response>) {
+   const fn = vi.fn(async (input: RequestInfo | URL) => respond(requestUrl(input)))
+   vi.stubGlobal('fetch', fn)
+   return fn
+ }
+ 
++// What a strict fetch stand-in answers for one URL: a response, a promise of
++// one, or a rejection for a network failure.
++export type FetchAnswer = () => Response | Promise<Response>
++
++let unexpectedFetches: string[] = []
++
++// Replaces global fetch with one that answers only the URLs in `routes`. Any
++// other request rejects and is recorded, and the test then fails at teardown
++// (see checkNoUnexpectedFetches), so a request no test asked for, such as one
++// to Odesli, can't be hidden by a fallback that swallows the rejection.
++export function mockFetchOnly(routes: Record<string, FetchAnswer>) {
++  return mockFetch((url) => {
++    const answer = routes[url]
++    if (answer) return answer()
++    unexpectedFetches.push(url)
++    return Promise.reject(new Error(`unexpected fetch ${url}`))
++  })
++}
++
++// Throws, failing the test, when a mockFetchOnly stand-in got a request it
++// had no route for. Run after every test by tests/support/setup.ts.
++export function checkNoUnexpectedFetches(): void {
++  const urls = unexpectedFetches
++  unexpectedFetches = []
++  if (urls.length) throw new Error(`unexpected fetch requests: ${urls.join(', ')}`)
++}
++
++export const failsToFetch: FetchAnswer = () => Promise.reject(new TypeError('Failed to fetch'))
++
+ export const fetchedUrls = (fn: ReturnType<typeof mockFetch>): string[] =>
+   fn.mock.calls.map(([input]) => requestUrl(input))
+ 
+diff --git a/tests/support/setup.ts b/tests/support/setup.ts
+index 0a57cf3..e3d513f 100644
+--- a/tests/support/setup.ts
++++ b/tests/support/setup.ts
+@@ -2,13 +2,14 @@ import '@testing-library/jest-dom/vitest'
+ import { cleanup } from '@testing-library/react'
+ import { afterEach, vi } from 'vitest'
+ import { resetClipboardStubs } from './clipboard'
+-import { stopJsonp } from './network'
++import { checkNoUnexpectedFetches, stopJsonp } from './network'
+ import { resetSystemTheme } from './systemTheme'
+ 
+ // Each test starts from a clean page: no rendered tree, no stored values,
+ // no theme attribute on <html>, the system theme reset to light, real timers,
+ // no JSONP stand-in, no clipboard or execCommand stand-in and the page URL
+-// back at /.
++// back at /. A test whose strict fetch stand-in got a request it didn't expect
++// fails here.
+ resetSystemTheme()
+ 
+ afterEach(() => {
+@@ -26,4 +27,5 @@ afterEach(() => {
+   resetClipboardStubs()
+   vi.useRealTimers()
+   window.history.replaceState(null, '', '/')
++  checkNoUnexpectedFetches()
+ })

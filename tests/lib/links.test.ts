@@ -324,6 +324,71 @@ describe('withSearchFallbacks', () => {
     }
   })
 
+  // PLAN-004 AC5/AC8: each platform is EXACT, LIKELY or SEARCH, never two.
+  describe('likely', () => {
+    const autoPicked = (): Lookup => ({
+      title: 'Bohemian Rhapsody',
+      artist: 'Queen',
+      links: { spotify: exactLinks.spotify, apple: exactLinks.apple },
+      likely: { apple: true },
+    })
+
+    it('marks every platform not likely when the lookup has no likely record', () => {
+      const result = withSearchFallbacks({ title: 'Bohemian Rhapsody', artist: 'Queen', links: exactLinks })
+      expect(result.likely).toEqual({ apple: false, spotify: false, ytm: false })
+    })
+
+    it('marks every platform not likely for a lookup with no links', () => {
+      const result = withSearchFallbacks({ title: 'Bohemian Rhapsody', links: {} })
+      expect(result.likely).toEqual({ apple: false, spotify: false, ytm: false })
+    })
+
+    it('keeps a given link marked likely as the link, likely and not exact', () => {
+      const result = withSearchFallbacks(autoPicked())
+      expect(result.links.apple).toBe(exactLinks.apple)
+      expect(result.likely.apple).toBe(true)
+      expect(result.exact.apple).toBe(false)
+    })
+
+    it('keeps a given link that is not marked likely exact', () => {
+      const result = withSearchFallbacks(autoPicked())
+      expect(result.exact.spotify).toBe(true)
+      expect(result.likely.spotify).toBe(false)
+    })
+
+    it('gives exact and likely records with every platform key', () => {
+      const result = withSearchFallbacks(autoPicked())
+      expect(result.exact).toEqual({ apple: false, spotify: true, ytm: false })
+      expect(result.likely).toEqual({ apple: true, spotify: false, ytm: false })
+    })
+
+    it('never marks a search link likely, even when the lookup says so', () => {
+      const result = withSearchFallbacks({
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+        links: { spotify: exactLinks.spotify },
+        likely: { apple: true, ytm: true },
+      })
+      expect(result.links.apple).toBe('https://music.apple.com/us/search?term=Bohemian%20Rhapsody%20Queen')
+      expect(result.likely).toEqual({ apple: false, spotify: false, ytm: false })
+      expect(result.exact).toEqual({ apple: false, spotify: true, ytm: false })
+    })
+
+    it('never marks a platform both exact and likely', () => {
+      const result = withSearchFallbacks({ ...autoPicked(), links: exactLinks, likely: { apple: true, ytm: true } })
+      for (const key of ['apple', 'spotify', 'ytm'] as const) {
+        expect(result.exact[key] && result.likely[key]).toBe(false)
+      }
+    })
+
+    it('searches YouTube Music for "title artist" with the auto-picked artist', () => {
+      const result = withSearchFallbacks(autoPicked())
+      expect(result.links.ytm).toBe('https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen')
+      expect(result.exact.ytm).toBe(false)
+      expect(result.likely.ytm).toBe(false)
+    })
+  })
+
   it('does not mutate the lookup it is given', () => {
     const lookup: Lookup = { title: 'Bohemian Rhapsody', artist: 'Queen', links: { spotify: exactLinks.spotify } }
     const before = structuredClone(lookup)
@@ -467,5 +532,65 @@ describe('withArtistChoice', () => {
     const result = withArtistChoice(conversion, NEON)
     expect(conversion).toEqual(before)
     expect(result).not.toBe(conversion)
+  })
+
+  // PLAN-004 AC7: a click overrides the auto-pick, and the result is EXACT.
+  describe('after an auto-pick', () => {
+    // NEON was auto-picked: its URL is the Apple link, tagged LIKELY.
+    const autoPicked = () =>
+      withSearchFallbacks({
+        title: "Ain't Gettin' High",
+        artist: NEON.artist,
+        art: ART,
+        links: { spotify: SPOTIFY_LINK, apple: NEON.url },
+        candidates: CANDIDATES,
+        likely: { apple: true },
+      })
+
+    it('starts with the Apple link likely and not exact', () => {
+      const before = autoPicked()
+      expect(before.likely.apple).toBe(true)
+      expect(before.exact.apple).toBe(false)
+    })
+
+    it('marks the Apple link exact and not likely when the auto-picked candidate is clicked', () => {
+      const result = withArtistChoice(autoPicked(), NEON)
+      expect(result.artist).toBe(NEON.artist)
+      expect(result.links.apple).toBe(NEON.url)
+      expect(result.exact.apple).toBe(true)
+      expect(result.likely).toEqual({ apple: false, spotify: false, ytm: false })
+    })
+
+    it('switches to another candidate, exact and not likely', () => {
+      const result = withArtistChoice(autoPicked(), MATSON)
+      expect(result.artist).toBe(MATSON.artist)
+      expect(result.links.apple).toBe(MATSON.url)
+      expect(result.exact.apple).toBe(true)
+      expect(result.likely).toEqual({ apple: false, spotify: false, ytm: false })
+    })
+
+    it('rebuilds the YouTube Music search with the newly chosen artist', () => {
+      const result = withArtistChoice(autoPicked(), MATSON)
+      expect(result.links.ytm).toBe(
+        "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20Samuel%20Cody%20Matson",
+      )
+      expect(result.exact.ytm).toBe(false)
+    })
+
+    it('keeps the exact Spotify link', () => {
+      const result = withArtistChoice(autoPicked(), MATSON)
+      expect(result.links.spotify).toBe(SPOTIFY_LINK)
+      expect(result.exact.spotify).toBe(true)
+    })
+
+    it('leaves nothing likely after a second choice', () => {
+      const result = withArtistChoice(withArtistChoice(autoPicked(), MATSON), NEON)
+      expect(result.likely).toEqual({ apple: false, spotify: false, ytm: false })
+      expect(result.exact.apple).toBe(true)
+    })
+  })
+
+  it('marks nothing likely after a choice from a result with no auto-pick', () => {
+    expect(withArtistChoice(fallback(), NEON).likely).toEqual({ apple: false, spotify: false, ytm: false })
   })
 })

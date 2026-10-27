@@ -139,6 +139,31 @@ describe('README', () => {
     },
   )
 
+  // PLAN-004 AC10: How it works describes the oEmbed/iTunes lookup, the tags
+  // and the artist picker, and no longer mentions Odesli.
+  describe('How it works', () => {
+    const howItWorks = () => section(/How it works/i)
+
+    it.each([
+      ['Spotify oEmbed', /oEmbed/],
+      ['the iTunes Search API', /iTunes/],
+      ['the SEARCH tag', /\bSEARCH\b/],
+      ['the LIKELY tag', /\bLIKELY\b/],
+      ['the EXACT tag', /\bEXACT\b/],
+      ['the artist picker', /pick/i],
+    ])('describes %s', (_name, pattern) => {
+      expect(howItWorks()).toMatch(pattern)
+    })
+
+    it('does not mention Odesli or song.link', () => {
+      expect(howItWorks()).not.toMatch(/odesli|song\.link/i)
+    })
+  })
+
+  it('does not mention Odesli or song.link anywhere', () => {
+    expect(readme).not.toMatch(/odesli|song\.link/i)
+  })
+
   it.each([
     ['iPhone Home Screen', /iPhone/],
     ['Share Sheet shortcut', /Shortcut/i],

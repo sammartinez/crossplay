@@ -43,19 +43,6 @@ export const SEARCH_URL_BASES = {
 // The app scheme opens Spotify's own search; the web search above stays the shared link.
 export const SPOTIFY_APP_SEARCH_URI = 'spotify:search:'
 
-export const ODESLI_API_URL = 'https://api.song.link/v1-alpha.1/links'
-export const ODESLI_COUNTRY = 'US'
-export const ODESLI_COUNTRY_PARAM = 'userCountry'
-export const ODESLI_URL_PARAM = 'url'
-// The linksByPlatform key Odesli uses for each of our platforms.
-export const ODESLI_PLATFORM_KEYS = {
-  [PLATFORM_APPLE]: 'appleMusic',
-  [PLATFORM_SPOTIFY]: 'spotify',
-  [PLATFORM_YTM]: 'youtubeMusic',
-} as const
-// Hop sources in the order Odesli matches them best to other platforms. Never
-// appleMusic or spotify: those are the links a hop fills.
-export const ODESLI_HOP_PLATFORMS = ['youtubeMusic', 'youtube', 'deezer', 'tidal', 'amazonMusic'] as const
 export const OEMBED_URL_PARAM = 'url'
 
 export const ITUNES_HOST = 'itunes.apple.com'
@@ -83,6 +70,26 @@ export const TITLE_ARTIST_SEPARATOR = ' — '
 export const SHARE_LABEL_SEPARATOR = ': '
 export const PATH_SEPARATOR = '/'
 
+// Trailing suffixes that name the same recording, stripped before titles are
+// compared. Live, Remix and other version markers are left out on purpose:
+// they name a different recording.
+const REMASTER_SUFFIX = String.raw`(\d{4}\s+)?remaster(ed)?(\s+\d{4})?(\s+version)?`
+const FEAT_CREDIT_SUFFIX = String.raw`(feat\.?|ft\.?|featuring)\s+[^()[\]]+`
+// After a dash the credit stops at the next spaced dash, so "- feat. X - Live" keeps "- Live".
+const DASH_FEAT_CREDIT_SUFFIX = String.raw`(feat\.?|ft\.?|featuring)\s+((?!\s[-–—]\s)[^()[\]])+`
+const WITH_CREDIT_SUFFIX = String.raw`with\s+[^()[\]]+`
+const SAME_MIX_SUFFIX = String.raw`radio edit|single version|mono|stereo`
+export const TITLE_NOISE_RES = [
+  new RegExp(
+    String.raw`\s+[-–—]\s+(${REMASTER_SUFFIX}|${DASH_FEAT_CREDIT_SUFFIX}|${SAME_MIX_SUFFIX})\s*$`,
+    'i',
+  ),
+  new RegExp(
+    String.raw`\s*[([]\s*(${REMASTER_SUFFIX}|${FEAT_CREDIT_SUFFIX}|${WITH_CREDIT_SUFFIX}|${SAME_MIX_SUFFIX})\s*[)\]]\s*$`,
+    'i',
+  ),
+]
+
 export const JSONP_TIMEOUT_MS = 8000
 export const JSONP_CALLBACK_PREFIX = 'cp'
 export const ITUNES_CALLBACK_PARAM = 'callback'
@@ -108,6 +115,10 @@ export const INPUT_LABEL = 'Spotify or Apple Music link'
 export const CONVERT_LABEL = 'Convert'
 export const TAG_EXACT = 'EXACT'
 export const TAG_SEARCH = 'SEARCH'
+export const TAG_LIKELY = 'LIKELY'
+export const TAG_CLASS = 'tag'
+export const TAG_EXACT_CLASS = 'tag exact'
+export const TAG_LIKELY_CLASS = 'tag likely'
 export const ARTIST_PICKER_LABEL = 'Which artist?'
 export const CANDIDATE_SEPARATOR = ' · '
 export const SPOTIFY_APP_SEARCH_LABEL = 'Search in Spotify app'
