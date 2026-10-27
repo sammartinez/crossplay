@@ -20,7 +20,7 @@ import {
   SPOTIFY_EMBED_RE,
   SPOTIFY_OEMBED_URL,
 } from '../constants'
-import { spotifyParsedLink } from './links'
+import { spotifyParsedLink } from './parse'
 import { sameTitle, titleCase } from './text'
 import { withParams } from './url'
 import type {
@@ -86,7 +86,7 @@ function firstPerArtist(candidates: ArtistCandidate[], title: string): ArtistCan
 // oEmbed has no artist and a title search can't confirm one. When exactly one
 // artist has the title, it is pre-selected and its Apple link marked likely;
 // otherwise the artist stays blank and the hits are only offered to pick from.
-export function fromSpotifyFallback(
+export function fromSpotifyOembed(
   oembed: SpotifyOembed,
   itunesBody: ItunesResponse | null,
   p: ParsedLink,
