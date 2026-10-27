@@ -58,7 +58,7 @@ const SPOTIFY_TRACK_CONVERSION: Conversion = {
   art: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02ce4f1737bc8a646c8c4bd25a',
   links: {
     apple: 'https://music.apple.com/us/search?term=Bohemian%20Rhapsody%20-%20Remastered%202011',
-    spotify: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
+    spotify: SPOTIFY_TRACK.link,
     ytm: 'https://music.youtube.com/search?q=Bohemian%20Rhapsody%20-%20Remastered%202011',
   },
   candidates: [
@@ -340,7 +340,7 @@ describe('lookupLink', () => {
           art: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02f0e1d2c3b4a5968778695a4b',
           links: {
             apple: 'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329',
-            spotify: 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd',
+            spotify: UNIQUE.link,
             ytm: "https://music.youtube.com/search?q=Rollin'%20Down%20To%20Memphis%20-%20Remastered%202015%20Marlow%20Vance",
           },
           candidates: UNIQUE_CANDIDATES,
@@ -428,7 +428,7 @@ describe('lookupLink', () => {
           art: REPORTED_THUMB,
           links: {
             apple: "https://music.apple.com/us/search?term=Ain't%20Gettin'%20High",
-            spotify: 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb',
+            spotify: REPORTED.link,
             ytm: "https://music.youtube.com/search?q=Ain't%20Gettin'%20High",
           },
           candidates: REPORTED_CANDIDATES,
