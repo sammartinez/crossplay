@@ -95,6 +95,9 @@ export const UNIQUE_CANDIDATES: ArtistCandidate[] = [
   },
 ]
 
+// A conversion's likely record when no platform is likely.
+export const NOTHING_LIKELY = { apple: false, spotify: false, ytm: false }
+
 // The status line's messages.
 export const INVALID_LINK_MESSAGE = 'That link isn’t a Spotify or Apple Music track or album.'
 export const LOOKING_UP_MESSAGE = 'Looking it up…'
@@ -125,17 +128,21 @@ export function mockAppleCase(itunes: JsonpOutcome = { data: fixture('itunes-loo
   return { fetchMock, loads }
 }
 
+// iTunes search answering a JSONP load by its entity: the albums fixture for an
+// album search, the songs fixture otherwise.
+export const answerItunesSearchByEntity = (src: string): JsonpOutcome => ({
+  data: fixture(src.includes('entity=album') ? 'itunes-search-albums.json' : 'itunes-search-songs.json'),
+})
+
 // A Spotify link: oEmbed answers `link` as `oembed` says, and iTunes search
-// answers with the albums fixture for an album search and the songs fixture
-// otherwise.
+// answers as `itunes` says (by default, by entity).
 export function mockSpotifyCase(
   link: string = SPOTIFY_TRACK.link,
   oembed: FetchAnswer = answerJson(fixture('spotify-oembed-track.json')),
+  itunes: JsonpOutcome | ((src: string) => JsonpOutcome) = answerItunesSearchByEntity,
 ) {
   const fetchMock = mockFetchOnly({ [spotifyOembedUrl(link)]: oembed })
-  const loads = mockJsonp((src) => ({
-    data: fixture(src.includes('entity=album') ? 'itunes-search-albums.json' : 'itunes-search-songs.json'),
-  }))
+  const loads = mockJsonp(typeof itunes === 'function' ? itunes : () => itunes)
   return { fetchMock, loads }
 }
 

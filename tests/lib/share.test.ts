@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { withSearchFallbacks } from '../../src/lib/links'
 import { fromSpotifyOembed } from '../../src/lib/lookup'
 import { shareText } from '../../src/lib/share'
-import { UNIQUE } from '../support/cases'
+import { SPOTIFY_TRACK, UNIQUE } from '../support/cases'
 import { fixture } from '../support/fixtures'
 
 const links = {
   apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
-  spotify: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
+  spotify: SPOTIFY_TRACK.link,
   ytm: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
 }
 

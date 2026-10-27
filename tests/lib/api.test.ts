@@ -12,6 +12,7 @@ import type { Conversion, ParsedLink } from '../../src/lib/types'
 import {
   APPLE_ALBUM,
   APPLE_TRACK,
+  NOTHING_LIKELY,
   REPORTED,
   REPORTED_CANDIDATES,
   REPORTED_THUMB,
@@ -47,8 +48,6 @@ import {
 
 const JSONP_TIMEOUT = 8000
 const ITUNES_URL = 'https://itunes.apple.com/search?term=queen&entity=song'
-
-const NOTHING_LIKELY = { apple: false, spotify: false, ytm: false }
 
 // What the Spotify track link converts to, with the track oEmbed and the songs
 // search: Queen and The Petersens both match, so no artist is picked.
@@ -247,8 +246,7 @@ describe('lookupLink', () => {
     })
 
     it('treat a failed iTunes JSONP load as no results', async () => {
-      mockFetchOnly({ [spotifyOembedUrl(SPOTIFY_TRACK.link)]: answerJson(fixture('spotify-oembed-track.json')) })
-      mockJsonp(() => 'error')
+      mockSpotifyCase(SPOTIFY_TRACK.link, undefined, 'error')
       const { conversion } = await lookupLink(SPOTIFY_TRACK)
       expect(conversion).toEqual(
         withSearchFallbacks(fromSpotifyOembed(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK)),

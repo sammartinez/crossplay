@@ -7,6 +7,7 @@ import {
   APPLE_ALBUM,
   INVALID_LINK_MESSAGE,
   LOOKING_UP_MESSAGE,
+  NOTHING_LIKELY,
   NOT_FOUND_MESSAGE,
   REPORTED,
   REPORTED_CANDIDATES,
@@ -17,6 +18,7 @@ import {
   SPOTIFY_TRACK_RAW,
   UNIQUE,
   UNIQUE_CANDIDATES,
+  answerItunesSearchByEntity,
   mockAppleCase,
   mockReportedCase,
   mockSpotifyCase,
@@ -43,12 +45,6 @@ import {
 // (withArtistChoice); here only the hook's state and wiring are.
 
 const sharedLink = () => new URLSearchParams(window.location.search).get('u')
-
-// iTunes search answers albums for an album search and songs otherwise, as in
-// mockSpotifyCase.
-const itunesSearch = (src: string) => ({
-  data: fixture(src.includes('entity=album') ? 'itunes-search-albums.json' : 'itunes-search-songs.json'),
-})
 
 // What a Spotify track lookup gives with the track oEmbed and the songs search.
 const SPOTIFY_TRACK_RESULT = () =>
@@ -230,7 +226,7 @@ describe('useConversion', () => {
         [spotifyOembedUrl(SPOTIFY_TRACK.link)]: later(SPOTIFY_TRACK.link),
         [spotifyOembedUrl(SPOTIFY_ALBUM.link)]: later(SPOTIFY_ALBUM.link),
       })
-      const loads: JsonpLoad[] = mockJsonp(itunesSearch)
+      const loads: JsonpLoad[] = mockJsonp(answerItunesSearchByEntity)
       const respond = async (link: string, body: unknown) => {
         const before = loads.length
         await vi.waitFor(() => expect(pending.has(link)).toBe(true))
@@ -381,7 +377,6 @@ describe('useConversion', () => {
     describe('after an auto-pick', () => {
       const UNIQUE_RAW = `${UNIQUE.link}?si=xyz`
       const [MARLOW, , HARPER] = UNIQUE_CANDIDATES
-      const NOTHING_LIKELY = { apple: false, spotify: false, ytm: false }
 
       async function convertedWithAutoPick() {
         mockUniqueCase()
