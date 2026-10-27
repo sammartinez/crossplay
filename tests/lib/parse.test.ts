@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { canonicalSpotifyLink, parseLink } from '../../src/lib/parse'
+import { APPLE_ALBUM, APPLE_TRACK, SPOTIFY_ALBUM, SPOTIFY_TRACK } from '../support/cases'
 
-const TRACK_ID = '4u7EnebtmKWzUH433cf5Qv'
-const ALBUM_ID = '1GbtB4zTqAsyfZEsm1RZfx'
+const TRACK_ID = SPOTIFY_TRACK.id!
+const ALBUM_ID = SPOTIFY_ALBUM.id!
 
 describe('parseLink', () => {
   it('returns null for text that is not a URL', () => {
@@ -18,48 +19,23 @@ describe('parseLink', () => {
   })
 
   it('trims surrounding whitespace before parsing', () => {
-    expect(parseLink(`  https://open.spotify.com/track/${TRACK_ID}\n`)).toEqual({
-      src: 'spotify',
-      kind: 'track',
-      id: TRACK_ID,
-      link: `https://open.spotify.com/track/${TRACK_ID}`,
-    })
+    expect(parseLink(`  https://open.spotify.com/track/${TRACK_ID}\n`)).toEqual(SPOTIFY_TRACK)
   })
 
   it('turns a Spotify track link into a canonical link without the query string', () => {
-    expect(parseLink(`https://open.spotify.com/track/${TRACK_ID}?si=8a1f2b3c4d5e6f70`)).toEqual({
-      src: 'spotify',
-      kind: 'track',
-      id: TRACK_ID,
-      link: `https://open.spotify.com/track/${TRACK_ID}`,
-    })
+    expect(parseLink(`https://open.spotify.com/track/${TRACK_ID}?si=8a1f2b3c4d5e6f70`)).toEqual(SPOTIFY_TRACK)
   })
 
   it('turns a Spotify album link into a canonical album link', () => {
-    expect(parseLink(`https://open.spotify.com/album/${ALBUM_ID}?si=abc`)).toEqual({
-      src: 'spotify',
-      kind: 'album',
-      id: ALBUM_ID,
-      link: `https://open.spotify.com/album/${ALBUM_ID}`,
-    })
+    expect(parseLink(`https://open.spotify.com/album/${ALBUM_ID}?si=abc`)).toEqual(SPOTIFY_ALBUM)
   })
 
   it('drops a locale segment from a Spotify link', () => {
-    expect(parseLink(`https://open.spotify.com/intl-de/track/${TRACK_ID}?si=x`)).toEqual({
-      src: 'spotify',
-      kind: 'track',
-      id: TRACK_ID,
-      link: `https://open.spotify.com/track/${TRACK_ID}`,
-    })
+    expect(parseLink(`https://open.spotify.com/intl-de/track/${TRACK_ID}?si=x`)).toEqual(SPOTIFY_TRACK)
   })
 
   it('canonicalizes a link from another spotify.com subdomain to open.spotify.com', () => {
-    expect(parseLink(`https://play.spotify.com/track/${TRACK_ID}`)).toEqual({
-      src: 'spotify',
-      kind: 'track',
-      id: TRACK_ID,
-      link: `https://open.spotify.com/track/${TRACK_ID}`,
-    })
+    expect(parseLink(`https://play.spotify.com/track/${TRACK_ID}`)).toEqual(SPOTIFY_TRACK)
   })
 
   it('returns a spotify.link short link as-is with no kind or id', () => {
@@ -84,13 +60,7 @@ describe('parseLink', () => {
   it('parses an Apple album link with ?i= as a track identified by the i param', () => {
     expect(
       parseLink('https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768'),
-    ).toEqual({
-      src: 'apple',
-      kind: 'track',
-      id: '1440806768',
-      slug: 'bohemian rhapsody',
-      link: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
-    })
+    ).toEqual(APPLE_TRACK)
   })
 
   it('keeps only the i param in an Apple track link', () => {
@@ -114,13 +84,7 @@ describe('parseLink', () => {
   it('parses an Apple album link as an album and drops its query string', () => {
     expect(
       parseLink('https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041?ls=1'),
-    ).toEqual({
-      src: 'apple',
-      kind: 'album',
-      id: '1440806041',
-      slug: 'a night at the opera 2011 remaster',
-      link: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
-    })
+    ).toEqual(APPLE_ALBUM)
   })
 
   it('returns null for an Apple artist link', () => {
