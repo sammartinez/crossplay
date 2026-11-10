@@ -1,0 +1,270 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 1d9ed15..fe235c0 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -2,7 +2,17 @@ import { useEffect, useRef, useState } from 'react'
+ import ConvertForm from './components/ConvertForm'
+ import ResultCard from './components/ResultCard'
+ import ThemeToggle from './components/ThemeToggle'
+-import { APP_NAME, APP_SUBTITLE, SHARE_URL_PARAM, STATUS_BUSY } from './constants'
++import {
++  APP_NAME,
++  APP_SUBTITLE,
++  BUSY_CLASS,
++  FADER_CLASS,
++  MESSAGE_CLASS,
++  MESSAGE_ERROR_CLASS,
++  SHARE_URL_PARAM,
++  STATUS_BUSY,
++  SUBTITLE_CLASS,
++} from './constants'
+ import { useConversion } from './hooks/useConversion'
+ 
+ export default function App() {
+@@ -21,17 +31,17 @@ export default function App() {
+   }, [sharedLink, convert])
+ 
+   return (
+-    <main className={busy ? 'busy' : undefined}>
++    <main className={busy ? BUSY_CLASS : undefined}>
+       <header>
+         <div>
+           <h1>{APP_NAME}</h1>
+-          <p className="sub">{APP_SUBTITLE}</p>
++          <p className={SUBTITLE_CLASS}>{APP_SUBTITLE}</p>
+         </div>
+         <ThemeToggle />
+       </header>
+       <ConvertForm busy={busy} initialValue={sharedLink} onConvert={convert} />
+-      <div className="fader" aria-hidden />
+-      <p className={isError ? 'msg err' : 'msg'} role="status">
++      <div className={FADER_CLASS} aria-hidden />
++      <p className={isError ? MESSAGE_ERROR_CLASS : MESSAGE_CLASS} role="status">
+         {message}
+       </p>
+       {conversion && <ResultCard conversion={conversion} onChooseArtist={chooseArtist} />}
+diff --git a/src/components/ConvertForm.tsx b/src/components/ConvertForm.tsx
+index e9ac445..f1badaf 100644
+--- a/src/components/ConvertForm.tsx
++++ b/src/components/ConvertForm.tsx
+@@ -1,5 +1,5 @@
+ import { useRef } from 'react'
+-import { CONVERT_LABEL, INPUT_LABEL, INPUT_PLACEHOLDER } from '../constants'
++import { CONVERT_LABEL, INPUT_LABEL, INPUT_PLACEHOLDER, PRIMARY_BUTTON_CLASS } from '../constants'
+ 
+ type Props = { busy: boolean; initialValue?: string; onConvert(raw: string): void }
+ 
+@@ -28,7 +28,7 @@ export default function ConvertForm({ busy, initialValue, onConvert }: Props) {
+         // The paste event fires before the pasted text is in the input.
+         onPaste={() => setTimeout(convertInput)}
+       />
+-      <button className="primary" type="submit" disabled={busy}>
++      <button className={PRIMARY_BUTTON_CLASS} type="submit" disabled={busy}>
+         {CONVERT_LABEL}
+       </button>
+     </form>
+diff --git a/src/components/ResultCard.tsx b/src/components/ResultCard.tsx
+index b11992a..eab6e6c 100644
+--- a/src/components/ResultCard.tsx
++++ b/src/components/ResultCard.tsx
+@@ -1,13 +1,18 @@
+ import { useId, useRef } from 'react'
+ import {
+   APP_LINK_CLASS,
++  ARTIST_CLASS,
+   ARTIST_PICKER_LABEL,
++  CANDIDATES_CLASS,
+   CANDIDATE_SEPARATOR,
++  CARD_CLASS,
+   COPY_LABEL,
+   FALLBACK_TEXTAREA_LABEL,
+   FALLBACK_TEXTAREA_ROWS,
++  GHOST_BUTTON_CLASS,
+   PLATFORMS,
+   PLATFORM_SPOTIFY,
++  SHARE_BUTTON_CLASS,
+   SHARE_LABEL,
+   SPOTIFY_APP_SEARCH_LABEL,
+   TAG_CLASS,
+@@ -16,6 +21,8 @@ import {
+   TAG_LIKELY,
+   TAG_LIKELY_CLASS,
+   TAG_SEARCH,
++  TITLE_CLASS,
++  TRACK_CLASS,
+ } from '../constants'
+ import { shareText } from '../lib/share'
+ import type { ArtistCandidate, Conversion, Platform } from '../lib/types'
+@@ -38,12 +45,12 @@ export default function ResultCard({ conversion, onChooseArtist }: Props) {
+   const fallbackRef = useRef<HTMLTextAreaElement>(null)
+ 
+   return (
+-    <section className="card">
+-      <div className="track">
++    <section className={CARD_CLASS}>
++      <div className={TRACK_CLASS}>
+         {art && <img src={art} alt="" />}
+         <div>
+-          <div className="title">{title}</div>
+-          <div className="artist">{artist}</div>
++          <div className={TITLE_CLASS}>{title}</div>
++          <div className={ARTIST_CLASS}>{artist}</div>
+         </div>
+       </div>
+       <ul>
+@@ -61,14 +68,14 @@ export default function ResultCard({ conversion, onChooseArtist }: Props) {
+             <CopyButton
+               text={links[key]}
+               label={COPY_LABEL}
+-              className="ghost"
++              className={GHOST_BUTTON_CLASS}
+               fallbackRef={fallbackRef}
+             />
+           </li>
+         ))}
+       </ul>
+       {candidates?.length ? (
+-        <div className="candidates" role="group" aria-labelledby={pickerLabelId}>
++        <div className={CANDIDATES_CLASS} role="group" aria-labelledby={pickerLabelId}>
+           <span id={pickerLabelId}>{ARTIST_PICKER_LABEL}</span>
+           {candidates.map((candidate) => (
+             <button
+@@ -85,7 +92,7 @@ export default function ResultCard({ conversion, onChooseArtist }: Props) {
+       <CopyButton
+         text={shareText(conversion)}
+         label={SHARE_LABEL}
+-        className="share"
++        className={SHARE_BUTTON_CLASS}
+         fallbackRef={fallbackRef}
+       />
+       <textarea
+diff --git a/src/components/ThemeToggle.tsx b/src/components/ThemeToggle.tsx
+index 0959d6a..b5ea83f 100644
+--- a/src/components/ThemeToggle.tsx
++++ b/src/components/ThemeToggle.tsx
+@@ -1,9 +1,13 @@
+-import { THEME_TOGGLE_LABEL } from '../constants'
++import { GHOST_BUTTON_CLASS, THEME_TOGGLE_LABEL } from '../constants'
+ import { applyTheme, nextTheme, shownTheme } from '../lib/theme'
+ 
+ export default function ThemeToggle() {
+   return (
+-    <button className="ghost" type="button" onClick={() => applyTheme(nextTheme(shownTheme()))}>
++    <button
++      className={GHOST_BUTTON_CLASS}
++      type="button"
++      onClick={() => applyTheme(nextTheme(shownTheme()))}
++    >
+       {THEME_TOGGLE_LABEL}
+     </button>
+   )
+diff --git a/src/constants.ts b/src/constants.ts
+index 2361f6f..6427b22 100644
+--- a/src/constants.ts
++++ b/src/constants.ts
+@@ -116,12 +116,27 @@ export const CONVERT_LABEL = 'Convert'
+ export const TAG_EXACT = 'EXACT'
+ export const TAG_SEARCH = 'SEARCH'
+ export const TAG_LIKELY = 'LIKELY'
+-export const TAG_CLASS = 'tag'
+-export const TAG_EXACT_CLASS = 'tag exact'
+-export const TAG_LIKELY_CLASS = 'tag likely'
+ export const ARTIST_PICKER_LABEL = 'Which artist?'
+ export const CANDIDATE_SEPARATOR = ' · '
+ export const SPOTIFY_APP_SEARCH_LABEL = 'Search in Spotify app'
++
++// Class names must match the selectors in src/styles.css.
++export const BUSY_CLASS = 'busy'
++export const MESSAGE_CLASS = 'msg'
++export const MESSAGE_ERROR_CLASS = 'msg err'
++export const SUBTITLE_CLASS = 'sub'
++export const FADER_CLASS = 'fader'
++export const CARD_CLASS = 'card'
++export const TRACK_CLASS = 'track'
++export const TITLE_CLASS = 'title'
++export const ARTIST_CLASS = 'artist'
++export const CANDIDATES_CLASS = 'candidates'
++export const PRIMARY_BUTTON_CLASS = 'primary'
++export const GHOST_BUTTON_CLASS = 'ghost'
++export const SHARE_BUTTON_CLASS = 'share'
++export const TAG_CLASS = 'tag'
++export const TAG_EXACT_CLASS = 'tag exact'
++export const TAG_LIKELY_CLASS = 'tag likely'
+ export const APP_LINK_CLASS = 'app-link'
+ 
+ export const COPY_COMMAND = 'copy'
+diff --git a/tests/literals.test.ts b/tests/literals.test.ts
+index 473b259..97154ac 100644
+--- a/tests/literals.test.ts
++++ b/tests/literals.test.ts
+@@ -31,7 +31,6 @@ const UI_TEXT = {
+   SPOTIFY_APP_SEARCH_LABEL: 'Search in Spotify app',
+ }
+ 
+-// The plan lets the implementer rename ALT_SEPARATOR to CANDIDATE_SEPARATOR.
+ const CANDIDATE_SEPARATOR = ' · '
+ const exported = constants as Record<string, unknown>
+ 
+@@ -41,7 +40,7 @@ describe('UI text constants', () => {
+   })
+ 
+   it('exports the " · " candidate separator', () => {
+-    expect(exported.CANDIDATE_SEPARATOR ?? exported.ALT_SEPARATOR).toBe(CANDIDATE_SEPARATOR)
++    expect(exported.CANDIDATE_SEPARATOR).toBe(CANDIDATE_SEPARATOR)
+   })
+ })
+ 
+@@ -93,3 +92,53 @@ it('keeps the copy reset delay and labels out of src/lib/clipboard.ts', () => {
+     expect(clipboard).not.toContain(text)
+   }
+ })
++
++// PLAN-005 T2: every class name the components use is a constant. Values are
++// written out so the test checks them rather than echoing src/constants.ts.
++const CLASS_CONSTANTS = {
++  BUSY_CLASS: 'busy',
++  MESSAGE_CLASS: 'msg',
++  MESSAGE_ERROR_CLASS: 'msg err',
++  SUBTITLE_CLASS: 'sub',
++  FADER_CLASS: 'fader',
++  CARD_CLASS: 'card',
++  TRACK_CLASS: 'track',
++  TITLE_CLASS: 'title',
++  ARTIST_CLASS: 'artist',
++  CANDIDATES_CLASS: 'candidates',
++  PRIMARY_BUTTON_CLASS: 'primary',
++  GHOST_BUTTON_CLASS: 'ghost',
++  SHARE_BUTTON_CLASS: 'share',
++}
++
++// The body of each `className={…}` expression, braces balanced.
++const classNameExpressions = (text: string) => {
++  const found: string[] = []
++  const opener = 'className={'
++  for (let at = text.indexOf(opener); at !== -1; at = text.indexOf(opener, at + 1)) {
++    let depth = 1
++    let end = at + opener.length
++    for (; end < text.length && depth > 0; end++) {
++      if (text[end] === '{') depth++
++      if (text[end] === '}') depth--
++    }
++    found.push(text.slice(at + opener.length, end - 1))
++  }
++  return found
++}
++
++describe('class name constants', () => {
++  it.each(Object.entries(CLASS_CONSTANTS))('exports %s', (name, value) => {
++    expect(exported[name]).toBe(value)
++  })
++})
++
++describe.each(COMPONENT_FILES)('%s class names', (file) => {
++  it('has no string-literal className attribute', () => {
++    expect(source(file)).not.toMatch(/className="/)
++  })
++
++  it('has no quoted string inside a className expression', () => {
++    expect(classNameExpressions(source(file)).filter((expr) => /['"`]/.test(expr))).toEqual([])
++  })
++})

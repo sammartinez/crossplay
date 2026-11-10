@@ -1,0 +1,2642 @@
+diff --git a/tests/App.test.tsx b/tests/App.test.tsx
+index da4f26c..0579b35 100644
+--- a/tests/App.test.tsx
++++ b/tests/App.test.tsx
+@@ -3,34 +3,47 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
+ import { describe, expect, it } from 'vitest'
+ import App from '../src/App'
+ import { spotifyOembedUrl } from '../src/lib/lookup'
++import {
++  APPLE_TRACK,
++  INVALID_LINK_MESSAGE,
++  LOOKING_UP_MESSAGE,
++  NOT_FOUND_MESSAGE,
++  REPORTED,
++  REPORTED_CANDIDATES,
++  REPORTED_THUMB,
++  REPORTED_TITLE,
++  SPOTIFY_TRACK,
++  SPOTIFY_TRACK_RAW,
++  UNIQUE,
++  UNIQUE_CANDIDATES,
++  UNIQUE_TITLE,
++  expectedShareText,
++  mockAppleCase,
++  mockReportedCase,
++  mockSpotifyCase,
++  mockUniqueCase,
++} from './support/cases'
+ import { fixture } from './support/fixtures'
+ import {
+   type Deferred,
+   type FetchAnswer,
+-  type JsonpOutcome,
++  answerJson,
+   deferred,
++  failsToFetch,
+   fetchedUrls,
+   jsonResponse,
+-  mockFetchOnly,
+-  mockJsonp,
+ } from './support/network'
+-import { expectedShareText, stubClipboard } from './support/clipboard'
++import { stubClipboard } from './support/clipboard'
+ import { expectNotShown, resultRow as row } from './support/dom'
+ 
+-// AC11 (convert UI) and AC13 (copy and share), plus PLAN-002 AC5–AC7 (honest
+-// fallback and the artist picker), driven through App's rendered output with
+-// only fetch and the JSONP script load stood in.
++// AC11 (convert UI) and AC13 (copy and share), plus PLAN-002 AC5–AC7 (an
++// honest Spotify result and the artist picker), driven through App's rendered
++// output with only fetch and the JSONP script load stood in.
+ // PLAN-004 AC1–AC4, AC9: lookups go straight to oEmbed/iTunes.
+ 
+ const PLACEHOLDER = 'https://open.spotify.com/track/…'
+-const LOOKING_UP_MESSAGE = 'Looking it up…'
+-const INVALID_LINK_MESSAGE = 'That link isn’t a Spotify or Apple Music track or album.'
+-const NOT_FOUND_MESSAGE = 'Couldn’t find that one. Check the link and try again.'
+ const APP_LINK_NAME = 'Search in Spotify app'
+ 
+-const SPOTIFY_TRACK_RAW = 'https://open.spotify.com/intl-de/track/4u7EnebtmKWzUH433cf5Qv?si=abc'
+-const SPOTIFY_TRACK_LINK = 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv'
+-const APPLE_SONG_LINK = 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768'
+ const NOT_A_MUSIC_LINK = 'https://example.com/track/123'
+ 
+ // From spotify-oembed-track.json
+@@ -42,44 +55,31 @@ const APPLE_ARTIST = 'Queen'
+ const APPLE_ART =
+   'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/300x300bb.jpg'
+ const APPLE_LINKS = {
+-  'Apple Music': APPLE_SONG_LINK,
++  'Apple Music': APPLE_TRACK.link,
+   Spotify: 'https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen',
+   'YouTube Music': 'https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen',
+ }
+ const APPLE_APP_SEARCH = 'spotify:search:Bohemian%20Rhapsody%20Queen'
+ 
+-// The reported case (PLAN-002 AC5–AC7), from spotify-oembed-aint-gettin-high.json
+-// and itunes-search-aint-gettin-high.json.
+-const REPORTED_LINK = 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb'
+-const REPORTED_TITLE = "Ain't Gettin' High"
+-const REPORTED_THUMB =
+-  'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02a1b2c3d4e5f60718293a4b5c'
++// The reported case (PLAN-002 AC5–AC7).
+ const TITLE_SEARCH = {
+   apple: "https://music.apple.com/us/search?term=Ain't%20Gettin'%20High",
+   ytm: "https://music.youtube.com/search?q=Ain't%20Gettin'%20High",
+ }
+-const MATSON = 'Samuel Cody Matson'
+-const NEON = 'The Neon Prairie Dogs'
+-const ZACH = 'Zach Bryan'
++const [MATSON, NEON, ZACH] = REPORTED_CANDIDATES.map((c) => c.artist)
++const [MATSON_URL, NEON_URL] = REPORTED_CANDIDATES.map((c) => c.url)
+ const PICK_MATSON = "Samuel Cody Matson · Ain't Gettin' High"
+ const PICK_NEON = "The Neon Prairie Dogs · Ain't Gettin' High"
+ const PICK_ZACH = 'Zach Bryan · Younger Years'
+-const MATSON_URL = 'https://music.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680'
+-const NEON_URL = 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571'
+ const NEON_YTM_SEARCH =
+   "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs"
+ 
+-// PLAN-004 AC5: a Spotify track with exactly one same-title iTunes artist,
+-// from spotify-oembed-unique-match.json and itunes-search-unique-match.json.
+-const UNIQUE_LINK = 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd'
+-const UNIQUE_TITLE = "Rollin' Down To Memphis - Remastered 2015"
+-const MARLOW = 'Marlow Vance'
+-const HARPER = 'Harper Lane'
++// PLAN-004 AC5: a Spotify track with exactly one same-title iTunes artist.
++const [MARLOW, , HARPER] = UNIQUE_CANDIDATES.map((c) => c.artist)
++const [MARLOW_URL, , HARPER_URL] = UNIQUE_CANDIDATES.map((c) => c.url)
+ const PICK_MARLOW = 'Marlow Vance · Rollin Down to Memphis'
+ const PICK_DUST = "The Dust Bowl Choir · Rollin' Down To Memphis (Live)"
+ const PICK_HARPER = 'Harper Lane · Midnight Ferry'
+-const MARLOW_URL = 'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329'
+-const HARPER_URL = 'https://music.apple.com/us/album/midnight-ferry/1645678900?i=1645678912'
+ const MARLOW_YTM_SEARCH =
+   "https://music.youtube.com/search?q=Rollin'%20Down%20To%20Memphis%20-%20Remastered%202015%20Marlow%20Vance"
+ const HARPER_YTM_SEARCH =
+@@ -108,45 +108,10 @@ async function waitForIdle() {
+   await waitFor(() => expect(convertButton()).toBeEnabled())
+ }
+ 
+-// An Apple link: no fetch is expected; the iTunes lookup answers as `itunes` says.
+-function appleCase(itunes: JsonpOutcome = { data: fixture('itunes-lookup-song.json') }) {
+-  const fetchMock = mockFetchOnly({})
+-  const loads = mockJsonp(() => itunes)
+-  return { fetchMock, loads }
+-}
+-
+-// The Spotify track link: oEmbed answers as `oembed` says and iTunes search
+-// answers with the songs fixture.
+-function spotifyCase(oembed: FetchAnswer = () => jsonResponse(fixture('spotify-oembed-track.json'))) {
+-  const fetchMock = mockFetchOnly({ [spotifyOembedUrl(SPOTIFY_TRACK_LINK)]: oembed })
+-  const loads = mockJsonp(() => ({ data: fixture('itunes-search-songs.json') }))
+-  return { fetchMock, loads }
+-}
+-
+-// oEmbed answers with the reported response, and iTunes search answers as
+-// `itunes` says.
+-function reportedCase(itunes: JsonpOutcome = { data: fixture('itunes-search-aint-gettin-high.json') }) {
+-  const fetchMock = mockFetchOnly({
+-    [spotifyOembedUrl(REPORTED_LINK)]: () => jsonResponse(fixture('spotify-oembed-aint-gettin-high.json')),
+-  })
+-  const loads = mockJsonp(() => itunes)
+-  return { fetchMock, loads }
+-}
+-
+-// oEmbed answers the unique-match link and iTunes search answers with the
+-// unique-match results.
+-function uniqueCase() {
+-  const fetchMock = mockFetchOnly({
+-    [spotifyOembedUrl(UNIQUE_LINK)]: () => jsonResponse(fixture('spotify-oembed-unique-match.json')),
+-  })
+-  const loads = mockJsonp(() => ({ data: fixture('itunes-search-unique-match.json') }))
+-  return { fetchMock, loads }
+-}
+-
+ // The Spotify track's oEmbed request waits until the test resolves it.
+ function pendingFetch() {
+   const pending: Deferred<Response>[] = []
+-  const { fetchMock } = spotifyCase(() => {
++  const { fetchMock } = mockSpotifyCase(SPOTIFY_TRACK.link, () => {
+     const d = deferred<Response>()
+     pending.push(d)
+     return d.promise
+@@ -192,7 +157,7 @@ describe('App', () => {
+     })
+ 
+     it('shows no result card and makes no request', () => {
+-      const { fetchMock, loads } = appleCase()
++      const { fetchMock, loads } = mockAppleCase()
+       render(<App />)
+       expect(queryPlatformLink('Apple Music')).not.toBeInTheDocument()
+       expect(fetchMock).not.toHaveBeenCalled()
+@@ -207,25 +172,25 @@ describe('App', () => {
+ 
+   describe('starting a conversion', () => {
+     it('looks up the canonical link with oEmbed when the form is submitted', () => {
+-      const { fetchMock } = spotifyCase()
++      const { fetchMock } = mockSpotifyCase()
+       render(<App />)
+       submit(SPOTIFY_TRACK_RAW)
+-      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+     })
+ 
+     it('looks up the pasted link one tick after the paste event', async () => {
+-      const { fetchMock } = spotifyCase()
++      const { fetchMock } = mockSpotifyCase()
+       render(<App />)
+       // The paste event fires before the browser puts the text in the input.
+       fireEvent.paste(input())
+       fireEvent.change(input(), { target: { value: SPOTIFY_TRACK_RAW } })
+       expect(fetchMock).not.toHaveBeenCalled()
+       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+-      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+     })
+ 
+     it('shows the result after a paste', async () => {
+-      spotifyCase()
++      mockSpotifyCase()
+       render(<App />)
+       fireEvent.paste(input())
+       fireEvent.change(input(), { target: { value: SPOTIFY_TRACK_RAW } })
+@@ -270,45 +235,45 @@ describe('App', () => {
+ 
+   describe('the result card for an Apple link', () => {
+     it('makes one iTunes lookup and no fetch', async () => {
+-      const { fetchMock, loads } = appleCase()
++      const { fetchMock, loads } = mockAppleCase()
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       expect(fetchMock).not.toHaveBeenCalled()
+       expect(loads).toHaveLength(1)
+     })
+ 
+     it('shows the title and the artist from the iTunes lookup', async () => {
+-      appleCase()
++      mockAppleCase()
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       expect(screen.getByText(APPLE_TITLE)).toBeInTheDocument()
+       expect(screen.getByText(APPLE_ARTIST)).toBeInTheDocument()
+     })
+ 
+     it('shows the artwork when there is one', async () => {
+-      appleCase()
++      mockAppleCase()
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       expect(artwork()).toHaveAttribute('src', APPLE_ART)
+       expect(artwork()).toBeVisible()
+     })
+ 
+     it('hides the artwork when there is none', async () => {
+-      appleCase({ data: fixture('itunes-lookup-empty.json') })
++      mockAppleCase({ data: fixture('itunes-lookup-empty.json') })
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       const img = artwork()
+       expectNotShown(img)
+     })
+ 
+     it('shows one row per platform in Apple Music, Spotify, YouTube Music order', async () => {
+-      appleCase()
++      mockAppleCase()
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       const names = screen
+         .getAllByRole('listitem')
+@@ -317,9 +282,9 @@ describe('App', () => {
+     })
+ 
+     it.each(Object.entries(APPLE_LINKS))('links %s to its converted URL', async (name, href) => {
+-      appleCase()
++      mockAppleCase()
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       expect(platformLink(name)).toHaveAttribute('href', href)
+     })
+@@ -327,9 +292,9 @@ describe('App', () => {
+     it.each(Object.keys(APPLE_LINKS))(
+       'opens the %s link in a new tab with rel="noopener"',
+       async (name) => {
+-        appleCase()
++        mockAppleCase()
+         render(<App />)
+-        submit(APPLE_SONG_LINK)
++        submit(APPLE_TRACK.link)
+         await waitForResult()
+         expect(platformLink(name)).toHaveAttribute('target', '_blank')
+         expect(platformLink(name)).toHaveAttribute('rel', 'noopener')
+@@ -337,9 +302,9 @@ describe('App', () => {
+     )
+ 
+     it('tags Apple Music EXACT and Spotify and YouTube Music SEARCH', async () => {
+-      appleCase()
++      mockAppleCase()
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       expect(within(row('Apple Music')).getByText('EXACT')).toBeInTheDocument()
+       expect(within(row('Spotify')).getByText('SEARCH')).toBeInTheDocument()
+@@ -349,33 +314,33 @@ describe('App', () => {
+     })
+ 
+     it('shows no LIKELY tag', async () => {
+-      appleCase()
++      mockAppleCase()
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       expect(screen.queryByText('LIKELY')).not.toBeInTheDocument()
+     })
+ 
+     it('shows the "Search in Spotify app" link for "title artist"', async () => {
+-      appleCase()
++      mockAppleCase()
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       expect(platformLink(APP_LINK_NAME)).toHaveAttribute('href', APPLE_APP_SEARCH)
+     })
+ 
+     it('shows no artist picker', async () => {
+-      appleCase()
++      mockAppleCase()
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+     })
+ 
+     it('uses the slug as the title and a blank artist when the iTunes lookup fails', async () => {
+-      appleCase('error')
++      mockAppleCase('error')
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       expect(screen.getByText(APPLE_TITLE)).toBeInTheDocument()
+       expect(screen.queryByText(APPLE_ARTIST)).not.toBeInTheDocument()
+@@ -398,27 +363,27 @@ describe('App', () => {
+     })
+ 
+     it.each([
+-      ['answers 404', () => jsonResponse({}, 404)],
+-      ['fails to fetch', () => Promise.reject(new TypeError('Failed to fetch'))],
++      ['answers 404', answerJson({}, 404)],
++      ['fails to fetch', failsToFetch],
+     ] as [string, FetchAnswer][])(
+       'shows the not-found message with the error style when oEmbed %s',
+       async (_, oembed) => {
+-        const { fetchMock, loads } = spotifyCase(oembed)
++        const { fetchMock, loads } = mockSpotifyCase(SPOTIFY_TRACK.link, oembed)
+         render(<App />)
+         submit(SPOTIFY_TRACK_RAW)
+         await waitFor(() => expect(status()).toHaveTextContent(NOT_FOUND_MESSAGE))
+         expect(status()).toHaveClass('err')
+         expect(main()).not.toHaveClass('busy')
+         expect(convertButton()).toBeEnabled()
+-        expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
++        expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+         expect(loads).toHaveLength(0)
+       },
+     )
+ 
+     it('hides the result card from an earlier conversion', async () => {
+-      appleCase()
++      mockAppleCase()
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       submit(NOT_A_MUSIC_LINK)
+       expect(status()).toHaveClass('err')
+@@ -445,17 +410,17 @@ describe('App', () => {
+     })
+ 
+     it('converts the link automatically', async () => {
+-      const { fetchMock } = spotifyCase()
++      const { fetchMock } = mockSpotifyCase()
+       openWithShareParam(SPOTIFY_TRACK_RAW)
+       render(<App />)
+       await waitForResult()
+-      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK_LINK)])
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+       expect(screen.getByText(SPOTIFY_TITLE)).toBeInTheDocument()
+     })
+ 
+     it('converts an Apple link automatically with one iTunes lookup and no fetch', async () => {
+-      const { fetchMock, loads } = appleCase()
+-      openWithShareParam(APPLE_SONG_LINK)
++      const { fetchMock, loads } = mockAppleCase()
++      openWithShareParam(APPLE_TRACK.link)
+       render(<App />)
+       await waitForResult()
+       expect(screen.getByText(APPLE_TITLE)).toBeInTheDocument()
+@@ -464,7 +429,7 @@ describe('App', () => {
+     })
+ 
+     it('converts only once', async () => {
+-      const { fetchMock, loads } = spotifyCase()
++      const { fetchMock, loads } = mockSpotifyCase()
+       openWithShareParam(SPOTIFY_TRACK_RAW)
+       render(<App />)
+       await waitForResult()
+@@ -474,7 +439,7 @@ describe('App', () => {
+     })
+ 
+     it('converts only once under StrictMode', async () => {
+-      const { fetchMock, loads } = spotifyCase()
++      const { fetchMock, loads } = mockSpotifyCase()
+       openWithShareParam(SPOTIFY_TRACK_RAW)
+       render(
+         <StrictMode>
+@@ -488,7 +453,7 @@ describe('App', () => {
+     })
+ 
+     it('shows the invalid-link error for a value that is not a music link', () => {
+-      const { fetchMock } = spotifyCase()
++      const { fetchMock } = mockSpotifyCase()
+       openWithShareParam('not-a-link')
+       render(<App />)
+       expect(input()).toHaveValue('not-a-link')
+@@ -504,18 +469,18 @@ describe('App', () => {
+     const pick = (name: string) => within(picker()).getByRole('button', { name })
+ 
+     async function showReported() {
+-      reportedCase()
++      mockReportedCase()
+       render(<App />)
+-      submit(REPORTED_LINK)
++      submit(REPORTED.link)
+       await waitForResult()
+     }
+ 
+     it('requests only the oEmbed, once, then one iTunes search', async () => {
+-      const { fetchMock, loads } = reportedCase()
++      const { fetchMock, loads } = mockReportedCase()
+       render(<App />)
+-      submit(REPORTED_LINK)
++      submit(REPORTED.link)
+       await waitForResult()
+-      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(REPORTED_LINK)])
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(REPORTED.link)])
+       expect(loads).toHaveLength(1)
+     })
+ 
+@@ -541,7 +506,7 @@ describe('App', () => {
+ 
+     it('links Spotify to the canonical track, tagged EXACT', async () => {
+       await showReported()
+-      expect(platformLink('Spotify')).toHaveAttribute('href', REPORTED_LINK)
++      expect(platformLink('Spotify')).toHaveAttribute('href', REPORTED.link)
+       expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
+     })
+ 
+@@ -559,7 +524,7 @@ describe('App', () => {
+         expect(writeText).toHaveBeenCalledWith(
+           expectedShareText(REPORTED_TITLE, {
+             apple: TITLE_SEARCH.apple,
+-            spotify: REPORTED_LINK,
++            spotify: REPORTED.link,
+             ytm: TITLE_SEARCH.ytm,
+           }),
+         ),
+@@ -587,11 +552,6 @@ describe('App', () => {
+       expect(screen.queryByText('LIKELY')).not.toBeInTheDocument()
+     })
+ 
+-    it('does not show the old "Wrong Apple match?" block', async () => {
+-      await showReported()
+-      expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
+-    })
+-
+     describe('after an artist is picked', () => {
+       it('shows that artist under the title', async () => {
+         await showReported()
+@@ -616,7 +576,7 @@ describe('App', () => {
+       it('keeps Spotify on the canonical track link', async () => {
+         await showReported()
+         fireEvent.click(pick(PICK_NEON))
+-        expect(platformLink('Spotify')).toHaveAttribute('href', REPORTED_LINK)
++        expect(platformLink('Spotify')).toHaveAttribute('href', REPORTED.link)
+       })
+ 
+       it('copies share text starting "<title> — <artist>" with the new links', async () => {
+@@ -628,7 +588,7 @@ describe('App', () => {
+           expect(writeText).toHaveBeenCalledWith(
+             expectedShareText(`${REPORTED_TITLE} — ${NEON}`, {
+               apple: NEON_URL,
+-              spotify: REPORTED_LINK,
++              spotify: REPORTED.link,
+               ytm: NEON_YTM_SEARCH,
+             }),
+           ),
+@@ -665,9 +625,9 @@ describe('App', () => {
+     })
+ 
+     it('shows no picker when the iTunes search finds nothing', async () => {
+-      reportedCase({ data: fixture('itunes-search-empty.json') })
++      mockReportedCase({ data: fixture('itunes-search-empty.json') })
+       render(<App />)
+-      submit(REPORTED_LINK)
++      submit(REPORTED.link)
+       await waitForResult()
+       expect(screen.getByText(REPORTED_TITLE)).toBeInTheDocument()
+       expect(queryPicker()).not.toBeInTheDocument()
+@@ -680,9 +640,9 @@ describe('App', () => {
+     })
+ 
+     it('shows no picker when the iTunes search fails to load', async () => {
+-      reportedCase('error')
++      mockReportedCase('error')
+       render(<App />)
+-      submit(REPORTED_LINK)
++      submit(REPORTED.link)
+       await waitForResult()
+       expect(screen.getByText(REPORTED_TITLE)).toBeInTheDocument()
+       expect(queryPicker()).not.toBeInTheDocument()
+@@ -695,18 +655,18 @@ describe('App', () => {
+     const pick = (name: string) => within(picker()).getByRole('button', { name })
+ 
+     async function showUnique() {
+-      uniqueCase()
++      mockUniqueCase()
+       render(<App />)
+-      submit(UNIQUE_LINK)
++      submit(UNIQUE.link)
+       await waitForResult()
+     }
+ 
+     it('requests only the oEmbed, once, then one iTunes search', async () => {
+-      const { fetchMock, loads } = uniqueCase()
++      const { fetchMock, loads } = mockUniqueCase()
+       render(<App />)
+-      submit(UNIQUE_LINK)
++      submit(UNIQUE.link)
+       await waitForResult()
+-      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(UNIQUE_LINK)])
++      expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(UNIQUE.link)])
+       expect(loads).toHaveLength(1)
+     })
+ 
+@@ -733,7 +693,7 @@ describe('App', () => {
+ 
+     it('links Spotify to the canonical track, tagged EXACT', async () => {
+       await showUnique()
+-      expect(platformLink('Spotify')).toHaveAttribute('href', UNIQUE_LINK)
++      expect(platformLink('Spotify')).toHaveAttribute('href', UNIQUE.link)
+       expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
+     })
+ 
+@@ -756,7 +716,7 @@ describe('App', () => {
+         expect(writeText).toHaveBeenCalledWith(
+           expectedShareText(`${UNIQUE_TITLE} — ${MARLOW}`, {
+             apple: MARLOW_URL,
+-            spotify: UNIQUE_LINK,
++            spotify: UNIQUE.link,
+             ytm: MARLOW_YTM_SEARCH,
+           }),
+         ),
+@@ -775,8 +735,8 @@ describe('App', () => {
+     })
+ 
+     it('shows the auto-pick when opened with ?u=<link>', async () => {
+-      uniqueCase()
+-      openWithShareParam(UNIQUE_LINK)
++      mockUniqueCase()
++      openWithShareParam(UNIQUE.link)
+       render(<App />)
+       await waitForResult()
+       expect(screen.getByText(MARLOW)).toBeInTheDocument()
+@@ -839,7 +799,7 @@ describe('App', () => {
+           expect(writeText).toHaveBeenCalledWith(
+             expectedShareText(`${UNIQUE_TITLE} — ${HARPER}`, {
+               apple: HARPER_URL,
+-              spotify: UNIQUE_LINK,
++              spotify: UNIQUE.link,
+               ytm: HARPER_YTM_SEARCH,
+             }),
+           ),
+@@ -850,10 +810,10 @@ describe('App', () => {
+ 
+   describe('copy and share', () => {
+     it('copies the converted share text with "Copy share text"', async () => {
+-      appleCase()
++      mockAppleCase()
+       const writeText = stubClipboard('ok')
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       fireEvent.click(screen.getByRole('button', { name: 'Copy share text' }))
+       await waitFor(() =>
+@@ -869,10 +829,10 @@ describe('App', () => {
+     })
+ 
+     it('copies a row link with its Copy button', async () => {
+-      appleCase()
++      mockAppleCase()
+       const writeText = stubClipboard('ok')
+       render(<App />)
+-      submit(APPLE_SONG_LINK)
++      submit(APPLE_TRACK.link)
+       await waitForResult()
+       fireEvent.click(within(row('YouTube Music')).getByRole('button', { name: 'Copy' }))
+       await waitFor(() => expect(writeText).toHaveBeenCalledWith(APPLE_LINKS['YouTube Music']))
+diff --git a/tests/components/ConvertForm.test.tsx b/tests/components/ConvertForm.test.tsx
+index 70e3216..57268ac 100644
+--- a/tests/components/ConvertForm.test.tsx
++++ b/tests/components/ConvertForm.test.tsx
+@@ -1,11 +1,12 @@
+ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+ import { describe, expect, it, vi } from 'vitest'
+ import ConvertForm from '../../src/components/ConvertForm'
++import { SPOTIFY_TRACK } from '../support/cases'
+ 
+ // AC11: the URL input and Convert button.
+ 
+ const PLACEHOLDER = 'https://open.spotify.com/track/…'
+-const LINK = 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv'
++const LINK = SPOTIFY_TRACK.link
+ 
+ const input = () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLInputElement
+ const convertButton = () => screen.getByRole('button', { name: 'Convert' })
+diff --git a/tests/components/ResultCard.test.tsx b/tests/components/ResultCard.test.tsx
+index 935366d..4320453 100644
+--- a/tests/components/ResultCard.test.tsx
++++ b/tests/components/ResultCard.test.tsx
+@@ -10,15 +10,15 @@ import {
+   RESET_MS,
+   advance,
+   clickAndSettle,
+-  expectedShareText,
+   selectedText,
+   stubClipboard,
+   stubExecCommand,
+ } from '../support/clipboard'
++import { expectedShareText } from '../support/cases'
+ import { expectNotShown, isShown, resultRow as row } from '../support/dom'
+ 
+ // AC11 (result card) and AC13 (copy and share), from a Conversion prop.
+-// PLAN-002 AC5/AC7: the honest fallback and the "Which artist?" picker.
++// PLAN-002 AC5/AC7: the honest Spotify-source result and the "Which artist?" picker.
+ 
+ const CANDIDATES: ArtistCandidate[] = [
+   { artist: 'First Artist', title: 'Song', url: 'https://music.apple.com/us/album/song/1?i=11' },
+@@ -36,8 +36,8 @@ const CONVERSION = withSearchFallbacks({
+   links: { spotify: 'https://open.spotify.com/track/abc', apple: CANDIDATES[0].url },
+ })
+ 
+-// A Spotify fallback result: blank artist, Spotify exact, candidates to pick from.
+-const FALLBACK = withSearchFallbacks({
++// A Spotify-source result: blank artist, Spotify exact, candidates to pick from.
++const SPOTIFY_SOURCE = withSearchFallbacks({
+   title: 'Song',
+   artist: '',
+   art: 'https://example.com/art.jpg',
+@@ -57,7 +57,7 @@ const SPOTIFY_WEB_SEARCH = 'https://open.spotify.com/search/Song%20First%20Artis
+ const SPOTIFY_APP_SEARCH = 'spotify:search:Song%20First%20Artist'
+ const APP_LINK_NAME = 'Search in Spotify app'
+ 
+-// PLAN-004 AC5: a Spotify fallback where First Artist was auto-picked, so the
++// PLAN-004 AC5: a Spotify-source result where First Artist was auto-picked, so the
+ // Apple link is their song, tagged LIKELY.
+ const AUTO_PICKED = withSearchFallbacks({
+   title: 'Song',
+@@ -149,7 +149,7 @@ describe('ResultCard', () => {
+     })
+ 
+     it('shows no LIKELY tag when nothing is likely', () => {
+-      renderCard(FALLBACK)
++      renderCard(SPOTIFY_SOURCE)
+       expect(screen.queryByText('LIKELY')).not.toBeInTheDocument()
+     })
+ 
+@@ -255,8 +255,8 @@ describe('ResultCard', () => {
+       expect(queryAppLink()).not.toBeInTheDocument()
+     })
+ 
+-    it('shows no app link in the Spotify-source fallback, where Spotify stays exact', () => {
+-      renderCard(FALLBACK)
++    it('shows no app link in the Spotify-source result, where Spotify stays exact', () => {
++      renderCard(SPOTIFY_SOURCE)
+       expect(queryAppLink()).not.toBeInTheDocument()
+     })
+ 
+@@ -301,13 +301,13 @@ describe('ResultCard', () => {
+ 
+   describe('artist picker', () => {
+     it('shows a group labelled "Which artist?" when there are candidates', () => {
+-      renderCard(FALLBACK)
++      renderCard(SPOTIFY_SOURCE)
+       expect(picker()).toBeInTheDocument()
+       expect(screen.getByText('Which artist?')).toBeInTheDocument()
+     })
+ 
+     it('shows one "<artist> · <title>" button per candidate, in order', () => {
+-      renderCard(FALLBACK)
++      renderCard(SPOTIFY_SOURCE)
+       const names = within(picker())
+         .getAllByRole('button')
+         .map((b) => b.textContent)
+@@ -315,67 +315,67 @@ describe('ResultCard', () => {
+     })
+ 
+     it('makes each candidate a plain button, not a submit button', () => {
+-      renderCard(FALLBACK)
++      renderCard(SPOTIFY_SOURCE)
+       for (const name of CANDIDATE_NAMES) {
+         expect(candidateButton(name)).toHaveAttribute('type', 'button')
+       }
+     })
+ 
+     it('presses no button while the artist is blank', () => {
+-      renderCard(FALLBACK)
++      renderCard(SPOTIFY_SOURCE)
+       for (const name of CANDIDATE_NAMES) {
+         expect(candidateButton(name)).toHaveAttribute('aria-pressed', 'false')
+       }
+     })
+ 
+     it('presses the button of the candidate whose artist is the current artist', () => {
+-      renderCard({ ...FALLBACK, artist: 'Second Artist' })
++      renderCard({ ...SPOTIFY_SOURCE, artist: 'Second Artist' })
+       expect(candidateButton('First Artist · Song')).toHaveAttribute('aria-pressed', 'false')
+       expect(candidateButton('Second Artist · Song (Live)')).toHaveAttribute('aria-pressed', 'true')
+       expect(candidateButton('Third Artist · Other Song')).toHaveAttribute('aria-pressed', 'false')
+     })
+ 
+     it('calls onChooseArtist with the clicked candidate', () => {
+-      const { onChooseArtist } = renderCard(FALLBACK)
++      const { onChooseArtist } = renderCard(SPOTIFY_SOURCE)
+       fireEvent.click(candidateButton('Third Artist · Other Song'))
+       expect(onChooseArtist).toHaveBeenCalledTimes(1)
+       expect(onChooseArtist).toHaveBeenCalledWith(CANDIDATES[2])
+     })
+ 
+     it('shows no artist name under the title while the artist is blank', () => {
+-      renderCard(FALLBACK)
++      renderCard(SPOTIFY_SOURCE)
+       expect(screen.getByText('Song')).toBeInTheDocument()
+       for (const { artist } of CANDIDATES) {
+         expect(screen.queryByText(artist)).not.toBeInTheDocument()
+       }
+     })
+ 
+-    it('tags the fallback Apple Music and YouTube Music rows SEARCH and Spotify EXACT', () => {
+-      renderCard(FALLBACK)
++    it("tags a Spotify-source result's Apple Music and YouTube Music rows SEARCH and Spotify EXACT", () => {
++      renderCard(SPOTIFY_SOURCE)
+       expect(within(row('Apple Music')).getByText('SEARCH')).toBeInTheDocument()
+       expect(within(row('Spotify')).getByText('EXACT')).toBeInTheDocument()
+       expect(within(row('YouTube Music')).getByText('SEARCH')).toBeInTheDocument()
+     })
+ 
+     it('hides the picker when there are no candidates', () => {
+-      renderCard({ ...FALLBACK, candidates: undefined })
++      renderCard({ ...SPOTIFY_SOURCE, candidates: undefined })
+       expect(queryPicker()).not.toBeInTheDocument()
+       expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+     })
+ 
+     it('hides the picker when the candidate list is empty', () => {
+-      renderCard({ ...FALLBACK, candidates: [] })
++      renderCard({ ...SPOTIFY_SOURCE, candidates: [] })
+       expect(queryPicker()).not.toBeInTheDocument()
+       expect(screen.queryByText('Which artist?')).not.toBeInTheDocument()
+     })
+ 
+     it('shows the picker for a single candidate', () => {
+-      renderCard({ ...FALLBACK, candidates: CANDIDATES.slice(0, 1) })
++      renderCard({ ...SPOTIFY_SOURCE, candidates: CANDIDATES.slice(0, 1) })
+       expect(within(picker()).getAllByRole('button')).toHaveLength(1)
+     })
+ 
+     it('never shows the old "Wrong Apple match?" block', () => {
+-      renderCard(FALLBACK)
++      renderCard(SPOTIFY_SOURCE)
+       expect(screen.queryByText('Wrong Apple match?')).not.toBeInTheDocument()
+     })
+   })
+diff --git a/tests/hooks/useConversion.test.ts b/tests/hooks/useConversion.test.ts
+index 02e37a6..0f760a5 100644
+--- a/tests/hooks/useConversion.test.ts
++++ b/tests/hooks/useConversion.test.ts
+@@ -3,11 +3,30 @@ import { describe, expect, it, vi } from 'vitest'
+ import { useConversion } from '../../src/hooks/useConversion'
+ import { withSearchFallbacks } from '../../src/lib/links'
+ import { fromSpotifyOembed, spotifyOembedUrl } from '../../src/lib/lookup'
+-import type { ArtistCandidate, ParsedLink } from '../../src/lib/types'
++import {
++  APPLE_ALBUM,
++  INVALID_LINK_MESSAGE,
++  LOOKING_UP_MESSAGE,
++  NOTHING_LIKELY,
++  NOT_FOUND_MESSAGE,
++  REPORTED,
++  REPORTED_CANDIDATES,
++  SHORT_LINK_MESSAGE,
++  SPOTIFY_ALBUM,
++  SPOTIFY_SHORT,
++  SPOTIFY_TRACK,
++  SPOTIFY_TRACK_RAW,
++  UNIQUE,
++  UNIQUE_CANDIDATES,
++  answerItunesSearchByEntity,
++  mockAppleCase,
++  mockReportedCase,
++  mockSpotifyCase,
++  mockUniqueCase,
++} from '../support/cases'
+ import { fixture } from '../support/fixtures'
+ import {
+   type Deferred,
+-  type FetchAnswer,
+   type JsonpLoad,
+   answerJson,
+   deferred,
+@@ -22,31 +41,11 @@ import {
+ // AC10 (conversion state) and, from PLAN-002, AC7 (choosing an artist candidate).
+ // The task interface names the result `conversion` and adds `isError`.
+ // PLAN-004 AC1/AC9: lookups go straight to oEmbed/iTunes.
+-
+-const INVALID_LINK_MESSAGE = 'That link isn’t a Spotify or Apple Music track or album.'
+-const LOOKING_UP_MESSAGE = 'Looking it up…'
+-const SHORT_LINK_MESSAGE =
+-  'Couldn’t open that short link. In Spotify, tap Share → Copy link, then paste the full open.spotify.com link.'
+-const NOT_FOUND_MESSAGE = 'Couldn’t find that one. Check the link and try again.'
+-
+-const SPOTIFY_TRACK: ParsedLink = {
+-  src: 'spotify',
+-  kind: 'track',
+-  id: '4u7EnebtmKWzUH433cf5Qv',
+-  link: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
+-}
+-const SPOTIFY_TRACK_RAW = 'https://open.spotify.com/intl-de/track/4u7EnebtmKWzUH433cf5Qv?si=abc'
+-const SPOTIFY_ALBUM_LINK = 'https://open.spotify.com/album/1GbtB4zTqAsyfZEsm1RZfx'
+-const APPLE_ALBUM_LINK = 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041'
+-const SHORT_LINK = 'https://spotify.link/aBcD1234'
++// What choosing an artist does to a conversion is tested in links.test.ts
++// (withArtistChoice); here only the hook's state and wiring are.
+ 
+ const sharedLink = () => new URLSearchParams(window.location.search).get('u')
+ 
+-// iTunes search answers albums for an album search and songs otherwise.
+-const itunesSearch = (src: string) => ({
+-  data: fixture(src.includes('entity=album') ? 'itunes-search-albums.json' : 'itunes-search-songs.json'),
+-})
+-
+ // What a Spotify track lookup gives with the track oEmbed and the songs search.
+ const SPOTIFY_TRACK_RESULT = () =>
+   withSearchFallbacks(
+@@ -57,13 +56,6 @@ const SPOTIFY_TRACK_RESULT = () =>
+     ),
+   )
+ 
+-// oEmbed answers `link` with `oembed`; iTunes search answers by entity.
+-function spotifyCase(link: string, oembed: FetchAnswer) {
+-  const fetchMock = mockFetchOnly({ [spotifyOembedUrl(link)]: oembed })
+-  const loads = mockJsonp(itunesSearch)
+-  return { fetchMock, loads }
+-}
+-
+ async function convertAndSettle(raw: string) {
+   const hook = renderHook(() => useConversion())
+   act(() => hook.result.current.convert(raw))
+@@ -112,7 +104,7 @@ describe('useConversion', () => {
+ 
+   describe('while a lookup is running', () => {
+     it('is busy with the looking-up message and no error', () => {
+-      spotifyCase(SPOTIFY_TRACK.link, () => deferred<Response>().promise)
++      mockSpotifyCase(SPOTIFY_TRACK.link, () => deferred<Response>().promise)
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+       expect(result.current.status).toBe('busy')
+@@ -121,7 +113,7 @@ describe('useConversion', () => {
+     })
+ 
+     it('looks up the canonical link with oEmbed only', () => {
+-      const { fetchMock } = spotifyCase(SPOTIFY_TRACK.link, () => deferred<Response>().promise)
++      const { fetchMock } = mockSpotifyCase(SPOTIFY_TRACK.link, () => deferred<Response>().promise)
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+@@ -130,7 +122,7 @@ describe('useConversion', () => {
+ 
+   describe('on success', () => {
+     it('is done with the conversion, an empty message and no error', async () => {
+-      spotifyCase(SPOTIFY_TRACK.link, answerJson(fixture('spotify-oembed-track.json')))
++      mockSpotifyCase()
+       const { result } = await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(result.current.status).toBe('done')
+       expect(result.current.conversion).toEqual(SPOTIFY_TRACK_RESULT())
+@@ -139,16 +131,15 @@ describe('useConversion', () => {
+     })
+ 
+     it('makes one oEmbed request and one iTunes search for a Spotify link', async () => {
+-      const { fetchMock, loads } = spotifyCase(SPOTIFY_TRACK.link, answerJson(fixture('spotify-oembed-track.json')))
++      const { fetchMock, loads } = mockSpotifyCase()
+       await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+       expect(loads).toHaveLength(1)
+     })
+ 
+     it('is done with an Apple link after one iTunes lookup and no fetch', async () => {
+-      const fetchMock = mockFetchOnly({})
+-      const loads = mockJsonp(() => ({ data: fixture('itunes-lookup-album.json') }))
+-      const { result } = await convertAndSettle(APPLE_ALBUM_LINK)
++      const { fetchMock, loads } = mockAppleCase({ data: fixture('itunes-lookup-album.json') })
++      const { result } = await convertAndSettle(APPLE_ALBUM.link)
+       expect(result.current.status).toBe('done')
+       expect(result.current.conversion?.title).toBe('A Night At The Opera (2011 Remaster)')
+       expect(result.current.conversion?.artist).toBe('Queen')
+@@ -157,7 +148,7 @@ describe('useConversion', () => {
+     })
+ 
+     it('replaces the page URL with ?u=<canonical link>', async () => {
+-      spotifyCase(SPOTIFY_TRACK.link, answerJson(fixture('spotify-oembed-track.json')))
++      mockSpotifyCase()
+       const historyLength = window.history.length
+       await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(sharedLink()).toBe(SPOTIFY_TRACK.link)
+@@ -165,8 +156,8 @@ describe('useConversion', () => {
+     })
+ 
+     it('shares the resolved canonical link for a short link', async () => {
+-      spotifyCase(SHORT_LINK, answerJson(fixture('spotify-oembed-track.json')))
+-      const { result } = await convertAndSettle(SHORT_LINK)
++      mockSpotifyCase(SPOTIFY_SHORT.link)
++      const { result } = await convertAndSettle(SPOTIFY_SHORT.link)
+       expect(result.current.status).toBe('done')
+       expect(sharedLink()).toBe(SPOTIFY_TRACK.link)
+     })
+@@ -174,8 +165,8 @@ describe('useConversion', () => {
+ 
+   describe('on failure', () => {
+     it('shows the short-link message when a spotify.link URL could not be resolved', async () => {
+-      spotifyCase(SHORT_LINK, answerJson(fixture('spotify-oembed-no-player.json')))
+-      const { result } = await convertAndSettle(SHORT_LINK)
++      mockSpotifyCase(SPOTIFY_SHORT.link, answerJson(fixture('spotify-oembed-no-player.json')))
++      const { result } = await convertAndSettle(SPOTIFY_SHORT.link)
+       expect(result.current.status).toBe('error')
+       expect(result.current.isError).toBe(true)
+       expect(result.current.message).toBe(SHORT_LINK_MESSAGE)
+@@ -183,7 +174,7 @@ describe('useConversion', () => {
+     })
+ 
+     it('shows the not-found message when the oEmbed request fails', async () => {
+-      spotifyCase(SPOTIFY_TRACK.link, failsToFetch)
++      mockSpotifyCase(SPOTIFY_TRACK.link, failsToFetch)
+       const { result } = await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(result.current.status).toBe('error')
+       expect(result.current.isError).toBe(true)
+@@ -192,7 +183,7 @@ describe('useConversion', () => {
+     })
+ 
+     it('shows the not-found message after one request when oEmbed answers non-OK', async () => {
+-      const { fetchMock } = spotifyCase(SPOTIFY_TRACK.link, answerJson({}, 404))
++      const { fetchMock } = mockSpotifyCase(SPOTIFY_TRACK.link, answerJson({}, 404))
+       const { result } = await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(result.current.message).toBe(NOT_FOUND_MESSAGE)
+       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+@@ -200,7 +191,7 @@ describe('useConversion', () => {
+ 
+     // MR-011 N2 / PLAN-004 AC6: a blank oEmbed title is not a result.
+     it('shows the not-found message, with no iTunes search, when the oEmbed title is blank', async () => {
+-      const { fetchMock, loads } = spotifyCase(
++      const { fetchMock, loads } = mockSpotifyCase(
+         SPOTIFY_TRACK.link,
+         answerJson({ ...fixture<object>('spotify-oembed-track.json'), title: '' }),
+       )
+@@ -214,7 +205,7 @@ describe('useConversion', () => {
+     })
+ 
+     it('leaves the page URL unchanged', async () => {
+-      spotifyCase(SPOTIFY_TRACK.link, answerJson({}, 404))
++      mockSpotifyCase(SPOTIFY_TRACK.link, answerJson({}, 404))
+       await convertAndSettle(SPOTIFY_TRACK_RAW)
+       expect(sharedLink()).toBeNull()
+     })
+@@ -233,9 +224,9 @@ describe('useConversion', () => {
+       }
+       const fetchMock = mockFetchOnly({
+         [spotifyOembedUrl(SPOTIFY_TRACK.link)]: later(SPOTIFY_TRACK.link),
+-        [spotifyOembedUrl(SPOTIFY_ALBUM_LINK)]: later(SPOTIFY_ALBUM_LINK),
++        [spotifyOembedUrl(SPOTIFY_ALBUM.link)]: later(SPOTIFY_ALBUM.link),
+       })
+-      const loads: JsonpLoad[] = mockJsonp(itunesSearch)
++      const loads: JsonpLoad[] = mockJsonp(answerItunesSearchByEntity)
+       const respond = async (link: string, body: unknown) => {
+         const before = loads.length
+         await vi.waitFor(() => expect(pending.has(link)).toBe(true))
+@@ -252,19 +243,19 @@ describe('useConversion', () => {
+       const { respond } = deferOembed()
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+-      act(() => result.current.convert(SPOTIFY_ALBUM_LINK))
+-      await respond(SPOTIFY_ALBUM_LINK, fixture('spotify-oembed-album.json'))
++      act(() => result.current.convert(SPOTIFY_ALBUM.link))
++      await respond(SPOTIFY_ALBUM.link, fixture('spotify-oembed-album.json'))
+       await respond(SPOTIFY_TRACK.link, fixture('spotify-oembed-track.json'))
+       expect(result.current.status).toBe('done')
+       expect(result.current.conversion?.title).toBe(ALBUM_TITLE)
+-      expect(sharedLink()).toBe(SPOTIFY_ALBUM_LINK)
++      expect(sharedLink()).toBe(SPOTIFY_ALBUM.link)
+     })
+ 
+     it('stays busy when an older response arrives before the newer one', async () => {
+       const { respond } = deferOembed()
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+-      act(() => result.current.convert(SPOTIFY_ALBUM_LINK))
++      act(() => result.current.convert(SPOTIFY_ALBUM.link))
+       await respond(SPOTIFY_TRACK.link, fixture('spotify-oembed-track.json'))
+       expect(result.current.status).toBe('busy')
+       expect(result.current.conversion).toBeNull()
+@@ -276,9 +267,9 @@ describe('useConversion', () => {
+       const { respond } = deferOembed()
+       const { result } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+-      act(() => result.current.convert(SPOTIFY_ALBUM_LINK))
++      act(() => result.current.convert(SPOTIFY_ALBUM.link))
+       await respond(SPOTIFY_TRACK.link, fixture('spotify-oembed-track.json'))
+-      await respond(SPOTIFY_ALBUM_LINK, fixture('spotify-oembed-album.json'))
++      await respond(SPOTIFY_ALBUM.link, fixture('spotify-oembed-album.json'))
+       expect(result.current.status).toBe('done')
+       expect(result.current.conversion?.title).toBe(ALBUM_TITLE)
+     })
+@@ -329,7 +320,7 @@ describe('useConversion', () => {
+   describe('after unmount', () => {
+     it('does not replace the page URL when the lookup finishes', async () => {
+       const pending = deferred<Response>()
+-      const { loads } = spotifyCase(SPOTIFY_TRACK.link, () => pending.promise)
++      const { loads } = mockSpotifyCase(SPOTIFY_TRACK.link, () => pending.promise)
+       const { result, unmount } = renderHook(() => useConversion())
+       act(() => result.current.convert(SPOTIFY_TRACK_RAW))
+       unmount()
+@@ -343,24 +334,11 @@ describe('useConversion', () => {
+   describe('chooseArtist', () => {
+     // The reported case: oEmbed has no artist, iTunes search returns several
+     // artists.
+-    const REPORTED_RAW = 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb'
+-    const NEON: ArtistCandidate = {
+-      artist: 'The Neon Prairie Dogs',
+-      title: "Ain't Gettin' High",
+-      url: 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571',
+-    }
+-    const ZACH: ArtistCandidate = {
+-      artist: 'Zach Bryan',
+-      title: 'Younger Years',
+-      url: 'https://music.apple.com/us/album/younger-years/1640014741?i=1640014759',
+-    }
++    const [, NEON] = REPORTED_CANDIDATES
+ 
+     async function convertedWithCandidates() {
+-      mockFetchOnly({
+-        [spotifyOembedUrl(REPORTED_RAW)]: answerJson(fixture('spotify-oembed-aint-gettin-high.json')),
+-      })
+-      mockJsonp(() => ({ data: fixture('itunes-search-aint-gettin-high.json') }))
+-      return convertAndSettle(REPORTED_RAW)
++      mockReportedCase()
++      return convertAndSettle(REPORTED.link)
+     }
+ 
+     it('starts with a blank artist and three candidates', async () => {
+@@ -386,68 +364,22 @@ describe('useConversion', () => {
+       expect(result.current.conversion?.exact.apple).toBe(true)
+     })
+ 
+-    it('rebuilds the YouTube Music search with the chosen artist', async () => {
+-      const { result } = await convertedWithCandidates()
+-      act(() => result.current.chooseArtist(NEON))
+-      expect(result.current.conversion?.links.ytm).toBe(
+-        "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
+-      )
+-    })
+-
+-    it('keeps the candidates in the same order', async () => {
+-      const { result } = await convertedWithCandidates()
+-      const before = result.current.conversion!.candidates
+-      act(() => result.current.chooseArtist(NEON))
+-      expect(result.current.conversion?.candidates).toEqual(before)
+-    })
+-
+-    it('switches to another candidate when a second one is chosen', async () => {
+-      const { result } = await convertedWithCandidates()
+-      act(() => result.current.chooseArtist(NEON))
+-      act(() => result.current.chooseArtist(ZACH))
+-      expect(result.current.conversion?.artist).toBe('Zach Bryan')
+-      expect(result.current.conversion?.links.apple).toBe(ZACH.url)
+-    })
+-
+     it('leaves the title, the Spotify link and the status as they were', async () => {
+       const { result } = await convertedWithCandidates()
+       act(() => result.current.chooseArtist(NEON))
+       expect(result.current.conversion?.title).toBe("Ain't Gettin' High")
+-      expect(result.current.conversion?.links.spotify).toBe(REPORTED_RAW)
++      expect(result.current.conversion?.links.spotify).toBe(REPORTED.link)
+       expect(result.current.conversion?.exact.spotify).toBe(true)
+       expect(result.current.status).toBe('done')
+     })
+ 
+-    it('returns a new conversion and does not mutate the previous one', async () => {
+-      const { result } = await convertedWithCandidates()
+-      const previous = result.current.conversion!
+-      const snapshot = structuredClone(previous)
+-      act(() => result.current.chooseArtist(NEON))
+-      expect(result.current.conversion).not.toBe(previous)
+-      expect(previous).toEqual(snapshot)
+-    })
+-
+     // PLAN-004 AC7: choosing a candidate after an auto-pick.
+     describe('after an auto-pick', () => {
+-      const UNIQUE_RAW = 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd?si=xyz'
+-      const UNIQUE_LINK = 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd'
+-      const MARLOW: ArtistCandidate = {
+-        artist: 'Marlow Vance',
+-        title: 'Rollin Down to Memphis',
+-        url: 'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329',
+-      }
+-      const HARPER: ArtistCandidate = {
+-        artist: 'Harper Lane',
+-        title: 'Midnight Ferry',
+-        url: 'https://music.apple.com/us/album/midnight-ferry/1645678900?i=1645678912',
+-      }
+-      const NOTHING_LIKELY = { apple: false, spotify: false, ytm: false }
++      const UNIQUE_RAW = `${UNIQUE.link}?si=xyz`
++      const [MARLOW, , HARPER] = UNIQUE_CANDIDATES
+ 
+       async function convertedWithAutoPick() {
+-        mockFetchOnly({
+-          [spotifyOembedUrl(UNIQUE_LINK)]: answerJson(fixture('spotify-oembed-unique-match.json')),
+-        })
+-        mockJsonp(() => ({ data: fixture('itunes-search-unique-match.json') }))
++        mockUniqueCase()
+         return convertAndSettle(UNIQUE_RAW)
+       }
+ 
+@@ -483,7 +415,7 @@ describe('useConversion', () => {
+       it('keeps the Spotify link exact and the status done', async () => {
+         const { result } = await convertedWithAutoPick()
+         act(() => result.current.chooseArtist(HARPER))
+-        expect(result.current.conversion?.links.spotify).toBe(UNIQUE_LINK)
++        expect(result.current.conversion?.links.spotify).toBe(UNIQUE.link)
+         expect(result.current.conversion?.exact.spotify).toBe(true)
+         expect(result.current.status).toBe('done')
+       })
+diff --git a/tests/lib/api.test.ts b/tests/lib/api.test.ts
+index 767c466..dc499d8 100644
+--- a/tests/lib/api.test.ts
++++ b/tests/lib/api.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it, vi } from 'vitest'
+ import { jsonp, lookupLink } from '../../src/lib/api'
+-import { spotifyAppSearchUri, withSearchFallbacks } from '../../src/lib/links'
++import { withSearchFallbacks } from '../../src/lib/links'
+ import {
+   fromItunesLookup,
+   fromSpotifyOembed,
+@@ -8,11 +8,27 @@ import {
+   itunesSearchUrl,
+   spotifyOembedUrl,
+ } from '../../src/lib/lookup'
+-import type { ParsedLink } from '../../src/lib/types'
++import type { Conversion, ParsedLink } from '../../src/lib/types'
++import {
++  APPLE_ALBUM,
++  APPLE_TRACK,
++  NOTHING_LIKELY,
++  REPORTED,
++  REPORTED_CANDIDATES,
++  REPORTED_THUMB,
++  REPORTED_TITLE,
++  SPOTIFY_SHORT,
++  SPOTIFY_TRACK,
++  UNIQUE,
++  UNIQUE_CANDIDATES,
++  UNIQUE_TITLE,
++  mockAppleCase,
++  mockReportedCase,
++  mockSpotifyCase,
++  mockUniqueCase,
++} from '../support/cases'
+ import { fixture } from '../support/fixtures'
+ import {
+-  type FetchAnswer,
+-  type JsonpOutcome,
+   answerJson,
+   failsToFetch,
+   fetchedUrls,
+@@ -25,65 +41,43 @@ import {
+ // a Spotify link is one oEmbed fetch, then one iTunes search over JSONP. It
+ // fills search links, never retries and never rejects. JSONP times out after
+ // 8 s and always cleans up.
+-// PLAN-004 AC1: no lookup requests Odesli.
++// PLAN-004 AC1: no lookup requests a service other than oEmbed and iTunes.
+ // PLAN-004 AC2-AC4: the Apple and Spotify paths and their degraded paths.
++// The mapping rules themselves are tested in lookup.test.ts and links.test.ts;
++// here each link type's whole result is checked once.
+ 
+ const JSONP_TIMEOUT = 8000
+ const ITUNES_URL = 'https://itunes.apple.com/search?term=queen&entity=song'
+ 
+-const SPOTIFY_TRACK: ParsedLink = {
+-  src: 'spotify',
+-  kind: 'track',
+-  id: '4u7EnebtmKWzUH433cf5Qv',
+-  link: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
+-}
+-const SPOTIFY_SHORT: ParsedLink = { src: 'spotify', link: 'https://spotify.link/aBcD1234' }
+-const APPLE_TRACK: ParsedLink = {
+-  src: 'apple',
+-  kind: 'track',
+-  id: '1440806768',
+-  slug: 'bohemian rhapsody',
+-  link: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
+-}
+-
+-const APPLE_ALBUM: ParsedLink = {
+-  src: 'apple',
+-  kind: 'album',
+-  id: '1440806041',
+-  slug: 'a night at the opera 2011 remaster',
+-  link: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
++// What the Spotify track link converts to, with the track oEmbed and the songs
++// search: Queen and The Petersens both match, so no artist is picked.
++const SPOTIFY_TRACK_CONVERSION: Conversion = {
++  title: 'Bohemian Rhapsody - Remastered 2011',
++  artist: '',
++  art: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02ce4f1737bc8a646c8c4bd25a',
++  links: {
++    apple: 'https://music.apple.com/us/search?term=Bohemian%20Rhapsody%20-%20Remastered%202011',
++    spotify: SPOTIFY_TRACK.link,
++    ytm: 'https://music.youtube.com/search?q=Bohemian%20Rhapsody%20-%20Remastered%202011',
++  },
++  candidates: [
++    {
++      artist: 'Queen',
++      title: 'Bohemian Rhapsody',
++      url: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
++    },
++    {
++      artist: 'The Petersens',
++      title: 'Bohemian Rhapsody',
++      url: 'https://music.apple.com/us/album/bohemian-rhapsody/1564530719?i=1564530724',
++    },
++  ],
++  exact: { apple: false, spotify: true, ytm: false },
++  likely: NOTHING_LIKELY,
+ }
+ 
+ const callbackRegistered = (name: string) => name in window
+ 
+-// The reported case.
+-const REPORTED: ParsedLink = {
+-  src: 'spotify',
+-  kind: 'track',
+-  id: '1yQDTSOyfVTCt9XWKQcnXb',
+-  link: 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb',
+-}
+-const REPORTED_TITLE = "Ain't Gettin' High"
+-const REPORTED_THUMB =
+-  'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02a1b2c3d4e5f60718293a4b5c'
+-const REPORTED_CANDIDATES = [
+-  {
+-    artist: 'Samuel Cody Matson',
+-    title: "Ain't Gettin' High",
+-    url: 'https://music.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680',
+-  },
+-  {
+-    artist: 'The Neon Prairie Dogs',
+-    title: "Ain't Gettin' High",
+-    url: 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571',
+-  },
+-  {
+-    artist: 'Zach Bryan',
+-    title: 'Younger Years',
+-    url: 'https://music.apple.com/us/album/younger-years/1640014741?i=1640014759',
+-  },
+-]
+-
+ describe('jsonp', () => {
+   it('resolves with the data passed to its callback', async () => {
+     mockJsonp(() => ({ data: { results: [1, 2] } }))
+@@ -152,88 +146,43 @@ describe('jsonp', () => {
+ 
+ describe('lookupLink', () => {
+   describe('Apple links', () => {
+-    // No fetch is expected at all; iTunes answers the JSONP load with `itunes`.
+-    function appleCase(itunes: JsonpOutcome = { data: fixture('itunes-lookup-song.json') }) {
+-      const fetchMock = mockFetchOnly({})
+-      const loads = mockJsonp(() => itunes)
+-      return { fetchMock, loads }
+-    }
+-
+     it('make one iTunes lookup over JSONP and no fetch', async () => {
+-      const { fetchMock, loads } = appleCase()
++      const { fetchMock, loads } = mockAppleCase()
+       await lookupLink(APPLE_TRACK)
+       expect(fetchedUrls(fetchMock)).toEqual([])
+       expect(loads.map((l) => l.src.startsWith(itunesLookupUrl(APPLE_TRACK)))).toEqual([true])
+     })
+ 
+     it('make one iTunes album lookup and no fetch for an Apple album link', async () => {
+-      const { fetchMock, loads } = appleCase({ data: fixture('itunes-lookup-album.json') })
++      const { fetchMock, loads } = mockAppleCase({ data: fixture('itunes-lookup-album.json') })
+       await lookupLink(APPLE_ALBUM)
+       expect(fetchedUrls(fetchMock)).toEqual([])
+       expect(loads.map((l) => l.src.startsWith(itunesLookupUrl(APPLE_ALBUM)))).toEqual([true])
+     })
+ 
+-    it('return the iTunes lookup result with search fallbacks filled in', async () => {
+-      appleCase()
+-      const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(conversion).toEqual(
+-        withSearchFallbacks(fromItunesLookup(fixture('itunes-lookup-song.json'), APPLE_TRACK)),
+-      )
+-    })
+-
+-    it('take the title, artist and art from the lookup', async () => {
+-      appleCase()
+-      const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(conversion?.title).toBe('Bohemian Rhapsody')
+-      expect(conversion?.artist).toBe('Queen')
+-      expect(conversion?.art).toBe(
+-        'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/300x300bb.jpg',
+-      )
+-    })
+-
+-    it('link Apple Music to the input link, tagged exact', async () => {
+-      appleCase()
+-      const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(conversion?.links.apple).toBe(APPLE_TRACK.link)
+-      expect(conversion?.exact.apple).toBe(true)
+-    })
+-
+-    it('link Spotify and YouTube Music to searches for "title artist", not exact', async () => {
+-      appleCase()
+-      const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(conversion?.links.spotify).toBe('https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen')
+-      expect(conversion?.links.ytm).toBe('https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen')
+-      expect(conversion?.exact.spotify).toBe(false)
+-      expect(conversion?.exact.ytm).toBe(false)
+-    })
+-
+-    it('give a "Search in Spotify app" link for "title artist"', async () => {
+-      appleCase()
+-      const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(conversion?.spotifyAppSearch).toBe(spotifyAppSearchUri('Bohemian Rhapsody Queen'))
+-    })
+-
+     // PLAN-004 AC6/AC8: Apple-source lookups never show LIKELY.
+-    it('mark no platform likely', async () => {
+-      appleCase()
+-      const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(conversion?.likely).toEqual({ apple: false, spotify: false, ytm: false })
+-    })
+-
+-    it('offer no artist candidates', async () => {
+-      appleCase()
+-      const { conversion } = await lookupLink(APPLE_TRACK)
+-      expect(conversion?.candidates ?? []).toEqual([])
+-    })
+-
+-    it('return the parsed link they were given', async () => {
+-      appleCase()
+-      const { parsed } = await lookupLink(APPLE_TRACK)
+-      expect(parsed).toEqual(APPLE_TRACK)
++    it('return the lookup with the input link as the exact Apple link, "title artist" searches and nothing likely', async () => {
++      mockAppleCase()
++      expect(await lookupLink(APPLE_TRACK)).toEqual({
++        parsed: APPLE_TRACK,
++        conversion: {
++          title: 'Bohemian Rhapsody',
++          artist: 'Queen',
++          art: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/300x300bb.jpg',
++          links: {
++            apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
++            spotify: 'https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen',
++            ytm: 'https://music.youtube.com/search?q=Bohemian%20Rhapsody%20Queen',
++          },
++          exact: { apple: true, spotify: false, ytm: false },
++          likely: NOTHING_LIKELY,
++          spotifyAppSearch: 'spotify:search:Bohemian%20Rhapsody%20Queen',
++        },
++      })
+     })
+ 
+     it('treat a failed iTunes JSONP load as no results and use the slug as the title', async () => {
+-      appleCase('error')
++      mockAppleCase('error')
+       const { conversion } = await lookupLink(APPLE_TRACK)
+       expect(conversion).toEqual(withSearchFallbacks(fromItunesLookup(null, APPLE_TRACK)))
+       expect(conversion?.title).toBe('Bohemian Rhapsody')
+@@ -242,7 +191,7 @@ describe('lookupLink', () => {
+ 
+     it('treat an iTunes JSONP timeout as no results', async () => {
+       vi.useFakeTimers()
+-      appleCase('hang')
++      mockAppleCase('hang')
+       const result = lookupLink(APPLE_TRACK)
+       await vi.advanceTimersByTimeAsync(JSONP_TIMEOUT)
+       const { conversion } = await result
+@@ -250,7 +199,7 @@ describe('lookupLink', () => {
+     })
+ 
+     it('use the slug as the title and a blank artist when iTunes returns no results', async () => {
+-      appleCase({ data: fixture('itunes-lookup-empty.json') })
++      mockAppleCase({ data: fixture('itunes-lookup-empty.json') })
+       const { conversion } = await lookupLink(APPLE_TRACK)
+       expect(conversion?.title).toBe('Bohemian Rhapsody')
+       expect(conversion?.artist).toBe('')
+@@ -259,7 +208,7 @@ describe('lookupLink', () => {
+     })
+ 
+     it('make no further request after a failed iTunes load', async () => {
+-      const { fetchMock, loads } = appleCase('error')
++      const { fetchMock, loads } = mockAppleCase('error')
+       await lookupLink(APPLE_TRACK)
+       expect(fetchedUrls(fetchMock)).toEqual([])
+       expect(loads).toHaveLength(1)
+@@ -267,58 +216,37 @@ describe('lookupLink', () => {
+ 
+     it('return a null conversion when there is no title from iTunes or the slug', async () => {
+       const noSlug: ParsedLink = { ...APPLE_TRACK, slug: '' }
+-      appleCase({ data: fixture('itunes-lookup-empty.json') })
++      mockAppleCase({ data: fixture('itunes-lookup-empty.json') })
+       const { conversion } = await lookupLink(noSlug)
+       expect(conversion).toBeNull()
+     })
+   })
+ 
+   describe('Spotify links', () => {
+-    // oEmbed answers as `oembed`; any other fetch fails the test.
+-    function spotifyCase(
+-      oembed: FetchAnswer = answerJson(fixture('spotify-oembed-track.json')),
+-      itunes: JsonpOutcome = { data: fixture('itunes-search-songs.json') },
+-    ) {
+-      const fetchMock = mockFetchOnly({ [spotifyOembedUrl(SPOTIFY_TRACK.link)]: oembed })
+-      const loads = mockJsonp(() => itunes)
+-      return { fetchMock, loads }
+-    }
+-
+     it('fetch only the oEmbed for the link, once', async () => {
+-      const { fetchMock } = spotifyCase()
++      const { fetchMock } = mockSpotifyCase()
+       await lookupLink(SPOTIFY_TRACK)
+       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+     })
+ 
+     it('search iTunes over JSONP for the oEmbed title', async () => {
+-      const { loads } = spotifyCase()
++      const { loads } = mockSpotifyCase()
+       await lookupLink(SPOTIFY_TRACK)
+       const expected = itunesSearchUrl('Bohemian Rhapsody - Remastered 2011', 'track')
+       expect(loads.map((l) => l.src.startsWith(expected))).toEqual([true])
+     })
+ 
+-    it('return the Spotify fallback result with search fallbacks filled in', async () => {
+-      spotifyCase()
+-      const { conversion } = await lookupLink(SPOTIFY_TRACK)
+-      expect(conversion).toEqual(
+-        withSearchFallbacks(
+-          fromSpotifyOembed(
+-            fixture('spotify-oembed-track.json'),
+-            fixture('itunes-search-songs.json'),
+-            SPOTIFY_TRACK,
+-          ),
+-        ),
+-      )
+-    })
+-
+-    it('return the parsed link they were given', async () => {
+-      spotifyCase()
+-      const { parsed } = await lookupLink(SPOTIFY_TRACK)
+-      expect(parsed).toEqual(SPOTIFY_TRACK)
++    // PLAN-004 AC6: two artists match after cleaning, so nothing is likely.
++    it('return the oEmbed title and art, the exact Spotify link, title searches, the candidates and nothing likely', async () => {
++      mockSpotifyCase()
++      expect(await lookupLink(SPOTIFY_TRACK)).toEqual({
++        parsed: SPOTIFY_TRACK,
++        conversion: SPOTIFY_TRACK_CONVERSION,
++      })
+     })
+ 
+     it('treat a failed iTunes JSONP load as no results', async () => {
+-      spotifyCase(answerJson(fixture('spotify-oembed-track.json')), 'error')
++      mockSpotifyCase(SPOTIFY_TRACK.link, undefined, 'error')
+       const { conversion } = await lookupLink(SPOTIFY_TRACK)
+       expect(conversion).toEqual(
+         withSearchFallbacks(fromSpotifyOembed(fixture('spotify-oembed-track.json'), null, SPOTIFY_TRACK)),
+@@ -327,7 +255,7 @@ describe('lookupLink', () => {
+     })
+ 
+     it('return a null conversion when the oEmbed request fails', async () => {
+-      spotifyCase(failsToFetch)
++      mockSpotifyCase(SPOTIFY_TRACK.link, failsToFetch)
+       const { conversion } = await lookupLink(SPOTIFY_TRACK)
+       expect(conversion).toBeNull()
+     })
+@@ -335,14 +263,14 @@ describe('lookupLink', () => {
+     it.each([404, 429, 500])(
+       'return a null conversion when oEmbed answers %i',
+       async (status) => {
+-        spotifyCase(answerJson({}, status))
++        mockSpotifyCase(SPOTIFY_TRACK.link, answerJson({}, status))
+         const { conversion } = await lookupLink(SPOTIFY_TRACK)
+         expect(conversion).toBeNull()
+       },
+     )
+ 
+     it('make exactly one request and no iTunes request when the oEmbed request fails', async () => {
+-      const { fetchMock, loads } = spotifyCase(failsToFetch)
++      const { fetchMock, loads } = mockSpotifyCase(SPOTIFY_TRACK.link, failsToFetch)
+       await lookupLink(SPOTIFY_TRACK)
+       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+       expect(loads).toHaveLength(0)
+@@ -351,7 +279,7 @@ describe('lookupLink', () => {
+     it.each([404, 429, 500])(
+       'make exactly one request and no iTunes request when oEmbed answers %i',
+       async (status) => {
+-        const { fetchMock, loads } = spotifyCase(answerJson({}, status))
++        const { fetchMock, loads } = mockSpotifyCase(SPOTIFY_TRACK.link, answerJson({}, status))
+         await lookupLink(SPOTIFY_TRACK)
+         expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_TRACK.link)])
+         expect(loads).toHaveLength(0)
+@@ -359,7 +287,7 @@ describe('lookupLink', () => {
+     )
+ 
+     it('return the parsed link they were given when the oEmbed request fails', async () => {
+-      spotifyCase(failsToFetch)
++      mockSpotifyCase(SPOTIFY_TRACK.link, failsToFetch)
+       const { parsed } = await lookupLink(SPOTIFY_TRACK)
+       expect(parsed).toEqual(SPOTIFY_TRACK)
+     })
+@@ -369,7 +297,8 @@ describe('lookupLink', () => {
+     it.each(['', '   '])(
+       'return a null conversion after one request and no iTunes search when the oEmbed title is %j',
+       async (title) => {
+-        const { fetchMock, loads } = spotifyCase(
++        const { fetchMock, loads } = mockSpotifyCase(
++          SPOTIFY_TRACK.link,
+           answerJson({ ...fixture<object>('spotify-oembed-track.json'), title }),
+         )
+         const { conversion } = await lookupLink(SPOTIFY_TRACK)
+@@ -382,130 +311,71 @@ describe('lookupLink', () => {
+     it('return a null conversion and no iTunes search when the oEmbed has no title', async () => {
+       const untitled = fixture<Record<string, unknown>>('spotify-oembed-track.json')
+       delete untitled.title
+-      const { loads } = spotifyCase(answerJson(untitled))
++      const { loads } = mockSpotifyCase(SPOTIFY_TRACK.link, answerJson(untitled))
+       const { conversion } = await lookupLink(SPOTIFY_TRACK)
+       expect(conversion).toBeNull()
+       expect(loads).toHaveLength(0)
+     })
+-
+-    // PLAN-004 AC6: two artists match after cleaning, so nothing is likely.
+-    it('mark no platform likely when Queen and The Petersens both match', async () => {
+-      spotifyCase()
+-      const { conversion } = await lookupLink(SPOTIFY_TRACK)
+-      expect(conversion?.artist).toBe('')
+-      expect(conversion?.likely).toEqual({ apple: false, spotify: false, ytm: false })
+-    })
+   })
+ 
+   // PLAN-004 AC5: a Spotify track whose iTunes results have exactly one
+   // artist with the same cleaned title.
+   describe('a Spotify link with a unique iTunes match', () => {
+-    const UNIQUE: ParsedLink = {
+-      src: 'spotify',
+-      kind: 'track',
+-      id: '3kVr8XqPz2LmNw7TyB5hJd',
+-      link: 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd',
+-    }
+-    const UNIQUE_TITLE = "Rollin' Down To Memphis - Remastered 2015"
+-    const MARLOW_MATCH_URL =
+-      'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329'
+-
+-    function uniqueCase() {
+-      const fetchMock = mockFetchOnly({
+-        [spotifyOembedUrl(UNIQUE.link)]: answerJson(fixture('spotify-oembed-unique-match.json')),
+-      })
+-      const loads = mockJsonp(() => ({ data: fixture('itunes-search-unique-match.json') }))
+-      return { fetchMock, loads }
+-    }
+-
+     it('fetches the oEmbed once, then makes one iTunes search for the original title', async () => {
+-      const { fetchMock, loads } = uniqueCase()
++      const { fetchMock, loads } = mockUniqueCase()
+       await lookupLink(UNIQUE)
+       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(UNIQUE.link)])
+       expect(loads.map((l) => l.src.startsWith(itunesSearchUrl(UNIQUE_TITLE, 'track')))).toEqual([true])
+     })
+ 
+-    it('sets the artist to the matching artist', async () => {
+-      uniqueCase()
+-      const { conversion } = await lookupLink(UNIQUE)
+-      expect(conversion?.title).toBe(UNIQUE_TITLE)
+-      expect(conversion?.artist).toBe('Marlow Vance')
+-    })
+-
+-    it("links Apple Music to that artist's matching result, likely and not exact", async () => {
+-      uniqueCase()
+-      const { conversion } = await lookupLink(UNIQUE)
+-      expect(conversion?.links.apple).toBe(MARLOW_MATCH_URL)
+-      expect(conversion?.likely.apple).toBe(true)
+-      expect(conversion?.exact.apple).toBe(false)
+-    })
+-
+-    it('keeps the canonical Spotify link exact and not likely', async () => {
+-      uniqueCase()
+-      const { conversion } = await lookupLink(UNIQUE)
+-      expect(conversion?.links.spotify).toBe(UNIQUE.link)
+-      expect(conversion?.exact.spotify).toBe(true)
+-      expect(conversion?.likely.spotify).toBe(false)
+-    })
+-
+-    it('links YouTube Music to a search for "title artist", neither exact nor likely', async () => {
+-      uniqueCase()
+-      const { conversion } = await lookupLink(UNIQUE)
+-      expect(conversion?.links.ytm).toBe(
+-        "https://music.youtube.com/search?q=Rollin'%20Down%20To%20Memphis%20-%20Remastered%202015%20Marlow%20Vance",
+-      )
+-      expect(conversion?.exact.ytm).toBe(false)
+-      expect(conversion?.likely.ytm).toBe(false)
+-    })
+-
+-    it('marks only Apple Music likely', async () => {
+-      uniqueCase()
+-      const { conversion } = await lookupLink(UNIQUE)
+-      expect(conversion?.likely).toEqual({ apple: true, spotify: false, ytm: false })
++    it("returns the matching artist, that artist's song as the likely Apple link, the exact Spotify link and a \"title artist\" YouTube Music search", async () => {
++      mockUniqueCase()
++      expect(await lookupLink(UNIQUE)).toEqual({
++        parsed: UNIQUE,
++        conversion: {
++          title: "Rollin' Down To Memphis - Remastered 2015",
++          artist: 'Marlow Vance',
++          art: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02f0e1d2c3b4a5968778695a4b',
++          links: {
++            apple: 'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329',
++            spotify: UNIQUE.link,
++            ytm: "https://music.youtube.com/search?q=Rollin'%20Down%20To%20Memphis%20-%20Remastered%202015%20Marlow%20Vance",
++          },
++          candidates: UNIQUE_CANDIDATES,
++          exact: { apple: false, spotify: true, ytm: false },
++          likely: { apple: true, spotify: false, ytm: false },
++        },
++      })
+     })
+   })
+ 
+   describe('Spotify short links', () => {
+-    // oEmbed answers the short link as `oembed`; any other fetch fails the test.
+-    function shortLinkCase(
+-      oembed: FetchAnswer,
+-      itunes: JsonpOutcome = { data: fixture('itunes-search-songs.json') },
+-    ) {
+-      const fetchMock = mockFetchOnly({ [spotifyOembedUrl(SPOTIFY_SHORT.link)]: oembed })
+-      const loads = mockJsonp(() => itunes)
+-      return { fetchMock, loads }
+-    }
+-
+     it('fetch only the oEmbed for the short link, once', async () => {
+-      const { fetchMock } = shortLinkCase(answerJson(fixture('spotify-oembed-track.json')))
++      const { fetchMock } = mockSpotifyCase(SPOTIFY_SHORT.link)
+       await lookupLink(SPOTIFY_SHORT)
+       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(SPOTIFY_SHORT.link)])
+     })
+ 
+-    it('return the parsed link resolved from the oEmbed player URL', async () => {
+-      shortLinkCase(answerJson(fixture('spotify-oembed-track.json')))
+-      const { parsed } = await lookupLink(SPOTIFY_SHORT)
+-      expect(parsed).toEqual(SPOTIFY_TRACK)
+-    })
+-
+-    it('use the resolved canonical link as the exact Spotify link', async () => {
+-      shortLinkCase(answerJson(fixture('spotify-oembed-track.json')))
+-      const { conversion } = await lookupLink(SPOTIFY_SHORT)
+-      expect(conversion?.links.spotify).toBe(SPOTIFY_TRACK.link)
+-      expect(conversion?.exact.spotify).toBe(true)
++    it('return the parsed link resolved from the oEmbed player URL and its conversion, with the canonical link as the exact Spotify link', async () => {
++      mockSpotifyCase(SPOTIFY_SHORT.link)
++      expect(await lookupLink(SPOTIFY_SHORT)).toEqual({
++        parsed: SPOTIFY_TRACK,
++        conversion: SPOTIFY_TRACK_CONVERSION,
++      })
+     })
+ 
+     it('search iTunes albums when the short link resolves to an album', async () => {
+-      const { loads } = shortLinkCase(answerJson(fixture('spotify-oembed-album.json')), {
+-        data: fixture('itunes-search-albums.json'),
+-      })
++      const { loads } = mockSpotifyCase(SPOTIFY_SHORT.link, answerJson(fixture('spotify-oembed-album.json')))
+       await lookupLink(SPOTIFY_SHORT)
+       const expected = itunesSearchUrl('A Night At The Opera (2011 Remaster)', 'album')
+       expect(loads.map((l) => l.src.startsWith(expected))).toEqual([true])
+     })
+ 
+     it('return a null conversion and the unresolved link when oEmbed has no player', async () => {
+-      const { fetchMock, loads } = shortLinkCase(answerJson(fixture('spotify-oembed-no-player.json')))
++      const { fetchMock, loads } = mockSpotifyCase(
++        SPOTIFY_SHORT.link,
++        answerJson(fixture('spotify-oembed-no-player.json')),
++      )
+       const { conversion, parsed } = await lookupLink(SPOTIFY_SHORT)
+       expect(conversion).toBeNull()
+       expect(parsed).toEqual(SPOTIFY_SHORT)
+@@ -514,7 +384,7 @@ describe('lookupLink', () => {
+     })
+ 
+     it('return a null conversion and the unresolved link when the oEmbed request fails', async () => {
+-      const { fetchMock, loads } = shortLinkCase(failsToFetch)
++      const { fetchMock, loads } = mockSpotifyCase(SPOTIFY_SHORT.link, failsToFetch)
+       const { conversion, parsed } = await lookupLink(SPOTIFY_SHORT)
+       expect(conversion).toBeNull()
+       expect(parsed).toEqual(SPOTIFY_SHORT)
+@@ -523,15 +393,12 @@ describe('lookupLink', () => {
+     })
+   })
+ 
+-  // PLAN-004 AC3/AC4: the reported link, now with no Odesli in front of it.
++  // PLAN-004 AC3/AC4: the reported link, looked up with oEmbed and iTunes only.
+   describe('the reported Spotify link', () => {
+-    // oEmbed answers with the reported response and iTunes search answers with
+-    // `itunes`. `requests` records every request, fetch or JSONP, in order.
+-    function reportedCase(
+-      itunes: JsonpOutcome = { data: fixture('itunes-search-aint-gettin-high.json') },
+-      oembed: FetchAnswer = answerJson(fixture('spotify-oembed-aint-gettin-high.json')),
+-    ) {
++    it('fetches the oEmbed once, then makes one iTunes search over JSONP for the title, in that order', async () => {
++      // Records every request, fetch or JSONP, in order.
+       const requests: string[] = []
++      const oembed = answerJson(fixture('spotify-oembed-aint-gettin-high.json'))
+       const fetchMock = mockFetchOnly({
+         [spotifyOembedUrl(REPORTED.link)]: () => {
+           requests.push(`fetch ${spotifyOembedUrl(REPORTED.link)}`)
+@@ -540,67 +407,37 @@ describe('lookupLink', () => {
+       })
+       const loads = mockJsonp((src) => {
+         requests.push(`jsonp ${src}`)
+-        return itunes
++        return { data: fixture('itunes-search-aint-gettin-high.json') }
+       })
+-      return { fetchMock, loads, requests }
+-    }
+-
+-    it('fetches the oEmbed once, then makes one iTunes search over JSONP for the title, in that order', async () => {
+-      const { fetchMock, loads, requests } = reportedCase()
+       await lookupLink(REPORTED)
+       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(REPORTED.link)])
+       expect(loads.map((l) => l.src.startsWith(itunesSearchUrl(REPORTED_TITLE, 'track')))).toEqual([true])
+       expect(requests).toEqual([`fetch ${spotifyOembedUrl(REPORTED.link)}`, `jsonp ${loads[0].src}`])
+     })
+ 
+-    it('takes the title and artwork from oEmbed', async () => {
+-      reportedCase()
+-      const { conversion } = await lookupLink(REPORTED)
+-      expect(conversion?.title).toBe(REPORTED_TITLE)
+-      expect(conversion?.art).toBe(REPORTED_THUMB)
+-    })
+-
+-    it('leaves the artist blank instead of using the top iTunes hit', async () => {
+-      reportedCase()
+-      const { conversion } = await lookupLink(REPORTED)
+-      expect(conversion?.artist).toBe('')
+-    })
+-
+-    it('links Apple Music to a search for the title alone, not exact', async () => {
+-      reportedCase()
+-      const { conversion } = await lookupLink(REPORTED)
+-      expect(conversion?.links.apple).toBe("https://music.apple.com/us/search?term=Ain't%20Gettin'%20High")
+-      expect(conversion?.exact.apple).toBe(false)
+-    })
+-
+-    it('keeps the canonical Spotify track link as exact', async () => {
+-      reportedCase()
+-      const { conversion } = await lookupLink(REPORTED)
+-      expect(conversion?.links.spotify).toBe(REPORTED.link)
+-      expect(conversion?.exact.spotify).toBe(true)
+-    })
+-
+-    it('links YouTube Music to a search for the title alone, not exact', async () => {
+-      reportedCase()
+-      const { conversion } = await lookupLink(REPORTED)
+-      expect(conversion?.links.ytm).toBe("https://music.youtube.com/search?q=Ain't%20Gettin'%20High")
+-      expect(conversion?.exact.ytm).toBe(false)
+-    })
+-
+-    it('marks no platform likely, since two artists have the title', async () => {
+-      reportedCase()
+-      const { conversion } = await lookupLink(REPORTED)
+-      expect(conversion?.likely).toEqual({ apple: false, spotify: false, ytm: false })
+-    })
+-
+-    it('offers the iTunes artists as candidates, one per artist, in iTunes order', async () => {
+-      reportedCase()
+-      const { conversion } = await lookupLink(REPORTED)
+-      expect(conversion?.candidates).toEqual(REPORTED_CANDIDATES)
++    // PLAN-004 AC6: two artists have the title, so nothing is likely.
++    it('returns the oEmbed title and art, a blank artist, title-only searches, the exact Spotify link, the candidates and nothing likely', async () => {
++      mockReportedCase()
++      expect(await lookupLink(REPORTED)).toEqual({
++        parsed: REPORTED,
++        conversion: {
++          title: "Ain't Gettin' High",
++          artist: '',
++          art: REPORTED_THUMB,
++          links: {
++            apple: "https://music.apple.com/us/search?term=Ain't%20Gettin'%20High",
++            spotify: REPORTED.link,
++            ytm: "https://music.youtube.com/search?q=Ain't%20Gettin'%20High",
++          },
++          candidates: REPORTED_CANDIDATES,
++          exact: { apple: false, spotify: true, ytm: false },
++          likely: NOTHING_LIKELY,
++        },
++      })
+     })
+ 
+     it('offers no candidates and still a title-only Apple search when iTunes finds nothing', async () => {
+-      reportedCase({ data: fixture('itunes-search-empty.json') })
++      mockReportedCase({ data: fixture('itunes-search-empty.json') })
+       const { conversion } = await lookupLink(REPORTED)
+       expect(conversion?.title).toBe(REPORTED_TITLE)
+       expect(conversion?.artist).toBe('')
+@@ -610,7 +447,7 @@ describe('lookupLink', () => {
+     })
+ 
+     it('offers no candidates and still a title-only Apple search when the iTunes JSONP load fails', async () => {
+-      reportedCase('error')
++      mockReportedCase('error')
+       const { conversion } = await lookupLink(REPORTED)
+       expect(conversion?.title).toBe(REPORTED_TITLE)
+       expect(conversion?.artist).toBe('')
+@@ -621,7 +458,7 @@ describe('lookupLink', () => {
+ 
+     it('offers no candidates and still a title-only Apple search when the iTunes JSONP load times out', async () => {
+       vi.useFakeTimers()
+-      const { fetchMock, loads } = reportedCase('hang')
++      const { fetchMock, loads } = mockReportedCase('hang')
+       const result = lookupLink(REPORTED)
+       await vi.advanceTimersByTimeAsync(JSONP_TIMEOUT)
+       const { conversion } = await result
+@@ -634,14 +471,14 @@ describe('lookupLink', () => {
+     })
+ 
+     it('makes no further request after a failed iTunes load', async () => {
+-      const { fetchMock, loads } = reportedCase('error')
++      const { fetchMock, loads } = mockReportedCase('error')
+       await lookupLink(REPORTED)
+       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(REPORTED.link)])
+       expect(loads).toHaveLength(1)
+     })
+ 
+     it('returns a null conversion after exactly one request when the oEmbed request fails', async () => {
+-      const { fetchMock, loads } = reportedCase(undefined, failsToFetch)
++      const { fetchMock, loads } = mockSpotifyCase(REPORTED.link, failsToFetch)
+       const { conversion } = await lookupLink(REPORTED)
+       expect(conversion).toBeNull()
+       expect(fetchedUrls(fetchMock)).toEqual([spotifyOembedUrl(REPORTED.link)])
+diff --git a/tests/lib/links.test.ts b/tests/lib/links.test.ts
+index bb1095b..ec667a0 100644
+--- a/tests/lib/links.test.ts
++++ b/tests/lib/links.test.ts
+@@ -6,9 +6,8 @@ import {
+   withArtistChoice,
+   withSearchFallbacks,
+ } from '../../src/lib/links'
+-import type { ArtistCandidate, Lookup } from '../../src/lib/types'
+-
+-const TRACK_ID = '4u7EnebtmKWzUH433cf5Qv'
++import type { Lookup } from '../../src/lib/types'
++import { APPLE_TRACK, REPORTED, REPORTED_CANDIDATES, REPORTED_THUMB, SPOTIFY_TRACK } from '../support/cases'
+ 
+ describe('searchUrl', () => {
+   it('builds a Spotify search URL with the query URI-encoded', () => {
+@@ -76,8 +75,8 @@ describe('spotifyAppSearchUri', () => {
+ 
+ describe('withSearchFallbacks', () => {
+   const exactLinks = {
+-    apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
+-    spotify: `https://open.spotify.com/track/${TRACK_ID}`,
++    apple: APPLE_TRACK.link,
++    spotify: SPOTIFY_TRACK.link,
+     ytm: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
+   }
+ 
+@@ -254,55 +253,36 @@ describe('withSearchFallbacks', () => {
+ })
+ 
+ describe('withArtistChoice', () => {
+-  // The reported Spotify fallback: no artist, Spotify exact, Apple and
++  // The reported Spotify result: no artist, Spotify exact, Apple and
+   // YouTube Music searches for the title alone.
+-  const SPOTIFY_LINK = 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb'
+-  const ART = 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02a1b2c3d4e5f60718293a4b5c'
+-  const CANDIDATES: ArtistCandidate[] = [
+-    {
+-      artist: 'Samuel Cody Matson',
+-      title: "Ain't Gettin' High",
+-      url: 'https://music.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680',
+-    },
+-    {
+-      artist: 'The Neon Prairie Dogs',
+-      title: "Ain't Gettin' High",
+-      url: 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571',
+-    },
+-    {
+-      artist: 'Zach Bryan',
+-      title: 'Younger Years',
+-      url: 'https://music.apple.com/us/album/younger-years/1640014741?i=1640014759',
+-    },
+-  ]
+-  const [MATSON, NEON] = CANDIDATES
+-  const fallback = () =>
++  const [MATSON, NEON] = REPORTED_CANDIDATES
++  const reported = () =>
+     withSearchFallbacks({
+       title: "Ain't Gettin' High",
+       artist: '',
+-      art: ART,
+-      links: { spotify: SPOTIFY_LINK },
+-      candidates: CANDIDATES,
++      art: REPORTED_THUMB,
++      links: { spotify: REPORTED.link },
++      candidates: REPORTED_CANDIDATES,
+     })
+ 
+   it("sets the artist to the candidate's artist", () => {
+-    expect(withArtistChoice(fallback(), NEON).artist).toBe('The Neon Prairie Dogs')
++    expect(withArtistChoice(reported(), NEON).artist).toBe('The Neon Prairie Dogs')
+   })
+ 
+   it("makes the candidate's URL the Apple link and marks it exact", () => {
+-    const result = withArtistChoice(fallback(), NEON)
++    const result = withArtistChoice(reported(), NEON)
+     expect(result.links.apple).toBe(NEON.url)
+     expect(result.exact.apple).toBe(true)
+   })
+ 
+   it('keeps the exact Spotify link', () => {
+-    const result = withArtistChoice(fallback(), NEON)
+-    expect(result.links.spotify).toBe(SPOTIFY_LINK)
++    const result = withArtistChoice(reported(), NEON)
++    expect(result.links.spotify).toBe(REPORTED.link)
+     expect(result.exact.spotify).toBe(true)
+   })
+ 
+   it('rebuilds the YouTube Music search for "title artist" and keeps it not exact', () => {
+-    const result = withArtistChoice(fallback(), NEON)
++    const result = withArtistChoice(reported(), NEON)
+     expect(result.links.ytm).toBe(
+       "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
+     )
+@@ -310,7 +290,7 @@ describe('withArtistChoice', () => {
+   })
+ 
+   it('leaves the Spotify app search URI undefined because Spotify stays exact', () => {
+-    const result = withArtistChoice(fallback(), NEON)
++    const result = withArtistChoice(reported(), NEON)
+     expect(result.spotifyAppSearch).toBeUndefined()
+   })
+ 
+@@ -321,7 +301,7 @@ describe('withArtistChoice', () => {
+         title: "Ain't Gettin' High",
+         artist: '',
+         links: { ytm: 'https://music.youtube.com/watch?v=abc' },
+-        candidates: CANDIDATES,
++        candidates: REPORTED_CANDIDATES,
+       })
+ 
+     it('rebuilds the Spotify app search URI with the chosen artist', () => {
+@@ -353,8 +333,8 @@ describe('withArtistChoice', () => {
+     const conversion = withSearchFallbacks({
+       title: 'Song',
+       artist: '',
+-      links: { spotify: SPOTIFY_LINK, ytm: 'https://music.youtube.com/watch?v=abc' },
+-      candidates: CANDIDATES,
++      links: { spotify: REPORTED.link, ytm: 'https://music.youtube.com/watch?v=abc' },
++      candidates: REPORTED_CANDIDATES,
+     })
+     const result = withArtistChoice(conversion, NEON)
+     expect(result.links.ytm).toBe('https://music.youtube.com/watch?v=abc')
+@@ -362,25 +342,25 @@ describe('withArtistChoice', () => {
+   })
+ 
+   it('keeps the title, artwork and candidates in the same order', () => {
+-    const result = withArtistChoice(fallback(), NEON)
++    const result = withArtistChoice(reported(), NEON)
+     expect(result.title).toBe("Ain't Gettin' High")
+-    expect(result.art).toBe(ART)
+-    expect(result.candidates).toEqual(CANDIDATES)
++    expect(result.art).toBe(REPORTED_THUMB)
++    expect(result.candidates).toEqual(REPORTED_CANDIDATES)
+   })
+ 
+   it('switches every chosen value when a second candidate is chosen', () => {
+-    const result = withArtistChoice(withArtistChoice(fallback(), NEON), MATSON)
++    const result = withArtistChoice(withArtistChoice(reported(), NEON), MATSON)
+     expect(result.artist).toBe('Samuel Cody Matson')
+     expect(result.links.apple).toBe(MATSON.url)
+     expect(result.exact.apple).toBe(true)
+     expect(result.links.ytm).toBe(
+       "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20Samuel%20Cody%20Matson",
+     )
+-    expect(result.candidates).toEqual(CANDIDATES)
++    expect(result.candidates).toEqual(REPORTED_CANDIDATES)
+   })
+ 
+   it('returns a new conversion and does not mutate the one it is given', () => {
+-    const conversion = fallback()
++    const conversion = reported()
+     const before = structuredClone(conversion)
+     const result = withArtistChoice(conversion, NEON)
+     expect(conversion).toEqual(before)
+@@ -394,9 +374,9 @@ describe('withArtistChoice', () => {
+       withSearchFallbacks({
+         title: "Ain't Gettin' High",
+         artist: NEON.artist,
+-        art: ART,
+-        links: { spotify: SPOTIFY_LINK, apple: NEON.url },
+-        candidates: CANDIDATES,
++        art: REPORTED_THUMB,
++        links: { spotify: REPORTED.link, apple: NEON.url },
++        candidates: REPORTED_CANDIDATES,
+         likely: { apple: true },
+       })
+ 
+@@ -432,7 +412,7 @@ describe('withArtistChoice', () => {
+ 
+     it('keeps the exact Spotify link', () => {
+       const result = withArtistChoice(autoPicked(), MATSON)
+-      expect(result.links.spotify).toBe(SPOTIFY_LINK)
++      expect(result.links.spotify).toBe(REPORTED.link)
+       expect(result.exact.spotify).toBe(true)
+     })
+ 
+@@ -444,6 +424,6 @@ describe('withArtistChoice', () => {
+   })
+ 
+   it('marks nothing likely after a choice from a result with no auto-pick', () => {
+-    expect(withArtistChoice(fallback(), NEON).likely).toEqual({ apple: false, spotify: false, ytm: false })
++    expect(withArtistChoice(reported(), NEON).likely).toEqual({ apple: false, spotify: false, ytm: false })
+   })
+ })
+diff --git a/tests/lib/lookup.test.ts b/tests/lib/lookup.test.ts
+index e22bf11..46d5d4e 100644
+--- a/tests/lib/lookup.test.ts
++++ b/tests/lib/lookup.test.ts
+@@ -7,36 +7,19 @@ import {
+   resolveSpotifyShortLink,
+   spotifyOembedUrl,
+ } from '../../src/lib/lookup'
+-import type { ParsedLink } from '../../src/lib/types'
++import {
++  APPLE_ALBUM,
++  APPLE_TRACK,
++  REPORTED,
++  REPORTED_CANDIDATES,
++  REPORTED_THUMB,
++  SPOTIFY_ALBUM,
++  SPOTIFY_TRACK,
++  UNIQUE,
++  UNIQUE_CANDIDATES,
++} from '../support/cases'
+ import { fixture } from '../support/fixtures'
+ 
+-const SPOTIFY_TRACK: ParsedLink = {
+-  src: 'spotify',
+-  kind: 'track',
+-  id: '4u7EnebtmKWzUH433cf5Qv',
+-  link: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
+-}
+-const SPOTIFY_ALBUM: ParsedLink = {
+-  src: 'spotify',
+-  kind: 'album',
+-  id: '1GbtB4zTqAsyfZEsm1RZfx',
+-  link: 'https://open.spotify.com/album/1GbtB4zTqAsyfZEsm1RZfx',
+-}
+-const APPLE_TRACK: ParsedLink = {
+-  src: 'apple',
+-  kind: 'track',
+-  id: '1440806768',
+-  slug: 'bohemian rhapsody',
+-  link: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
+-}
+-const APPLE_ALBUM: ParsedLink = {
+-  src: 'apple',
+-  kind: 'album',
+-  id: '1440806041',
+-  slug: 'a night at the opera 2011 remaster',
+-  link: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
+-}
+-
+ const ARTWORK_100 =
+   'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/27/0d/0e/270d0e2b/source/100x100bb.jpg'
+ const ARTWORK_300 =
+@@ -165,33 +148,8 @@ describe('itunesSearchUrl', () => {
+ })
+ 
+ describe('fromSpotifyOembed', () => {
+-  // The reported case: oEmbed has no artist, and the iTunes
+-  // title search returns several artists.
+-  const REPORTED: ParsedLink = {
+-    src: 'spotify',
+-    kind: 'track',
+-    id: '1yQDTSOyfVTCt9XWKQcnXb',
+-    link: 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb',
+-  }
+-  const REPORTED_THUMB =
+-    'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02a1b2c3d4e5f60718293a4b5c'
+-  const REPORTED_CANDIDATES = [
+-    {
+-      artist: 'Samuel Cody Matson',
+-      title: "Ain't Gettin' High",
+-      url: 'https://music.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680',
+-    },
+-    {
+-      artist: 'The Neon Prairie Dogs',
+-      title: "Ain't Gettin' High",
+-      url: 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571',
+-    },
+-    {
+-      artist: 'Zach Bryan',
+-      title: 'Younger Years',
+-      url: 'https://music.apple.com/us/album/younger-years/1640014741?i=1640014759',
+-    },
+-  ]
++  // The reported case: oEmbed has no artist, and the iTunes title search
++  // returns several artists.
+   const reported = () =>
+     fromSpotifyOembed(
+       fixture('spotify-oembed-aint-gettin-high.json'),
+@@ -207,27 +165,8 @@ describe('fromSpotifyOembed', () => {
+     collectionViewUrl: trackViewUrl,
+   })
+ 
+-  it('takes the title and artwork from oEmbed and the Spotify link from the parsed link', () => {
+-    const lookup = reported()
+-    expect(lookup.title).toBe("Ain't Gettin' High")
+-    expect(lookup.art).toBe(REPORTED_THUMB)
+-    expect(lookup.links.spotify).toBe(REPORTED.link)
+-  })
+-
+-  it('leaves the artist blank in the reported case instead of using the top iTunes hit', () => {
+-    expect(reported().artist).toBe('')
+-  })
+-
+-  it('gives no Apple link in the reported case, only the Spotify link', () => {
+-    expect(reported().links).toEqual({ spotify: REPORTED.link })
+-  })
+-
+   // PLAN-004 AC3/AC6: Matson and the Neon Prairie Dogs both have the title,
+-  // so nothing is auto-picked.
+-  it('marks nothing LIKELY in the reported case, where two artists have the title', () => {
+-    expect(reported().likely).toBeUndefined()
+-  })
+-
++  // so nothing is auto-picked: no artist, no Apple link, nothing likely.
+   it('returns the oEmbed title and art, a blank artist, the Spotify link and the candidates', () => {
+     expect(reported()).toEqual({
+       title: "Ain't Gettin' High",
+@@ -238,10 +177,6 @@ describe('fromSpotifyOembed', () => {
+     })
+   })
+ 
+-  it('offers one candidate per artist in first-appearance order in the reported case', () => {
+-    expect(reported().candidates).toEqual(REPORTED_CANDIDATES)
+-  })
+-
+   it("keeps each artist's first result, not a later release or live version", () => {
+     const neon = reported().candidates?.find((c) => c.artist === 'The Neon Prairie Dogs')
+     expect(neon?.title).toBe("Ain't Gettin' High")
+@@ -369,29 +304,10 @@ describe('fromSpotifyOembed', () => {
+   // PLAN-004 AC5: exactly one artist has a result whose cleaned title is the
+   // oEmbed title's, so that artist is pre-selected and Apple tagged LIKELY.
+   describe('with exactly one artist whose title matches', () => {
+-    const UNIQUE: ParsedLink = {
+-      src: 'spotify',
+-      kind: 'track',
+-      id: '3kVr8XqPz2LmNw7TyB5hJd',
+-      link: 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd',
+-    }
+     const UNIQUE_THUMB =
+       'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02f0e1d2c3b4a5968778695a4b'
+     const MARLOW_MATCH_URL =
+       'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329'
+-    const UNIQUE_CANDIDATES = [
+-      { artist: 'Marlow Vance', title: 'Rollin Down to Memphis', url: MARLOW_MATCH_URL },
+-      {
+-        artist: 'The Dust Bowl Choir',
+-        title: "Rollin' Down To Memphis (Live)",
+-        url: 'https://music.apple.com/us/album/rollin-down-to-memphis-live/1623456780?i=1623456791',
+-      },
+-      {
+-        artist: 'Harper Lane',
+-        title: 'Midnight Ferry',
+-        url: 'https://music.apple.com/us/album/midnight-ferry/1645678900?i=1645678912',
+-      },
+-    ]
+     const unique = () =>
+       fromSpotifyOembed(
+         fixture('spotify-oembed-unique-match.json'),
+@@ -410,25 +326,6 @@ describe('fromSpotifyOembed', () => {
+       })
+     })
+ 
+-    it('sets the artist to the only artist with a matching title', () => {
+-      expect(unique().artist).toBe('Marlow Vance')
+-    })
+-
+-    it("links Apple Music to that artist's matching result on music.apple.com without &uo=", () => {
+-      const { apple } = unique().links
+-      expect(apple).toBe(MARLOW_MATCH_URL)
+-      expect(new URL(apple!).hostname).toBe('music.apple.com')
+-      expect(apple).not.toContain('uo=')
+-    })
+-
+-    it('marks only the Apple link likely', () => {
+-      expect(unique().likely).toEqual({ apple: true })
+-    })
+-
+-    it('keeps the canonical Spotify link', () => {
+-      expect(unique().links.spotify).toBe(UNIQUE.link)
+-    })
+-
+     it('keeps the original oEmbed title, not the cleaned one', () => {
+       expect(unique().title).toBe("Rollin' Down To Memphis - Remastered 2015")
+     })
+@@ -438,10 +335,6 @@ describe('fromSpotifyOembed', () => {
+       expect(marlow).toEqual({ artist: 'Marlow Vance', title: 'Rollin Down to Memphis', url: MARLOW_MATCH_URL })
+     })
+ 
+-    it("keeps each other artist's first result as its candidate", () => {
+-      expect(unique().candidates).toEqual(UNIQUE_CANDIDATES)
+-    })
+-
+     it('counts two matching results by the same artist as one artist', () => {
+       const lookup = fromSpotifyOembed(
+         fixture('spotify-oembed-unique-match.json'),
+diff --git a/tests/lib/parse.test.ts b/tests/lib/parse.test.ts
+index 14d1c87..3796686 100644
+--- a/tests/lib/parse.test.ts
++++ b/tests/lib/parse.test.ts
+@@ -1,8 +1,9 @@
+ import { describe, expect, it } from 'vitest'
+ import { canonicalSpotifyLink, parseLink } from '../../src/lib/parse'
++import { APPLE_ALBUM, APPLE_TRACK, SPOTIFY_ALBUM, SPOTIFY_TRACK } from '../support/cases'
+ 
+-const TRACK_ID = '4u7EnebtmKWzUH433cf5Qv'
+-const ALBUM_ID = '1GbtB4zTqAsyfZEsm1RZfx'
++const TRACK_ID = SPOTIFY_TRACK.id!
++const ALBUM_ID = SPOTIFY_ALBUM.id!
+ 
+ describe('parseLink', () => {
+   it('returns null for text that is not a URL', () => {
+@@ -18,48 +19,23 @@ describe('parseLink', () => {
+   })
+ 
+   it('trims surrounding whitespace before parsing', () => {
+-    expect(parseLink(`  https://open.spotify.com/track/${TRACK_ID}\n`)).toEqual({
+-      src: 'spotify',
+-      kind: 'track',
+-      id: TRACK_ID,
+-      link: `https://open.spotify.com/track/${TRACK_ID}`,
+-    })
++    expect(parseLink(`  https://open.spotify.com/track/${TRACK_ID}\n`)).toEqual(SPOTIFY_TRACK)
+   })
+ 
+   it('turns a Spotify track link into a canonical link without the query string', () => {
+-    expect(parseLink(`https://open.spotify.com/track/${TRACK_ID}?si=8a1f2b3c4d5e6f70`)).toEqual({
+-      src: 'spotify',
+-      kind: 'track',
+-      id: TRACK_ID,
+-      link: `https://open.spotify.com/track/${TRACK_ID}`,
+-    })
++    expect(parseLink(`https://open.spotify.com/track/${TRACK_ID}?si=8a1f2b3c4d5e6f70`)).toEqual(SPOTIFY_TRACK)
+   })
+ 
+   it('turns a Spotify album link into a canonical album link', () => {
+-    expect(parseLink(`https://open.spotify.com/album/${ALBUM_ID}?si=abc`)).toEqual({
+-      src: 'spotify',
+-      kind: 'album',
+-      id: ALBUM_ID,
+-      link: `https://open.spotify.com/album/${ALBUM_ID}`,
+-    })
++    expect(parseLink(`https://open.spotify.com/album/${ALBUM_ID}?si=abc`)).toEqual(SPOTIFY_ALBUM)
+   })
+ 
+   it('drops a locale segment from a Spotify link', () => {
+-    expect(parseLink(`https://open.spotify.com/intl-de/track/${TRACK_ID}?si=x`)).toEqual({
+-      src: 'spotify',
+-      kind: 'track',
+-      id: TRACK_ID,
+-      link: `https://open.spotify.com/track/${TRACK_ID}`,
+-    })
++    expect(parseLink(`https://open.spotify.com/intl-de/track/${TRACK_ID}?si=x`)).toEqual(SPOTIFY_TRACK)
+   })
+ 
+   it('canonicalizes a link from another spotify.com subdomain to open.spotify.com', () => {
+-    expect(parseLink(`https://play.spotify.com/track/${TRACK_ID}`)).toEqual({
+-      src: 'spotify',
+-      kind: 'track',
+-      id: TRACK_ID,
+-      link: `https://open.spotify.com/track/${TRACK_ID}`,
+-    })
++    expect(parseLink(`https://play.spotify.com/track/${TRACK_ID}`)).toEqual(SPOTIFY_TRACK)
+   })
+ 
+   it('returns a spotify.link short link as-is with no kind or id', () => {
+@@ -84,13 +60,7 @@ describe('parseLink', () => {
+   it('parses an Apple album link with ?i= as a track identified by the i param', () => {
+     expect(
+       parseLink('https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768'),
+-    ).toEqual({
+-      src: 'apple',
+-      kind: 'track',
+-      id: '1440806768',
+-      slug: 'bohemian rhapsody',
+-      link: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
+-    })
++    ).toEqual(APPLE_TRACK)
+   })
+ 
+   it('keeps only the i param in an Apple track link', () => {
+@@ -114,13 +84,7 @@ describe('parseLink', () => {
+   it('parses an Apple album link as an album and drops its query string', () => {
+     expect(
+       parseLink('https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041?ls=1'),
+-    ).toEqual({
+-      src: 'apple',
+-      kind: 'album',
+-      id: '1440806041',
+-      slug: 'a night at the opera 2011 remaster',
+-      link: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
+-    })
++    ).toEqual(APPLE_ALBUM)
+   })
+ 
+   it('returns null for an Apple artist link', () => {
+diff --git a/tests/lib/share.test.ts b/tests/lib/share.test.ts
+index 2bd2207..7fb9120 100644
+--- a/tests/lib/share.test.ts
++++ b/tests/lib/share.test.ts
+@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest'
+ import { withSearchFallbacks } from '../../src/lib/links'
+ import { fromSpotifyOembed } from '../../src/lib/lookup'
+ import { shareText } from '../../src/lib/share'
++import { SPOTIFY_TRACK, UNIQUE } from '../support/cases'
+ import { fixture } from '../support/fixtures'
+ 
+ const links = {
+   apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
+-  spotify: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
++  spotify: SPOTIFY_TRACK.link,
+   ytm: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
+ }
+ 
+@@ -56,13 +57,12 @@ describe('shareText', () => {
+   // PLAN-004 AC5: an auto-picked result shares its artist and LIKELY Apple URL,
+   // with no tags in the text.
+   describe('for an auto-picked result', () => {
+-    const UNIQUE_LINK = 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd'
+     const autoPicked = () =>
+       withSearchFallbacks(
+         fromSpotifyOembed(
+           fixture('spotify-oembed-unique-match.json'),
+           fixture('itunes-search-unique-match.json'),
+-          { src: 'spotify', kind: 'track', id: '3kVr8XqPz2LmNw7TyB5hJd', link: UNIQUE_LINK },
++          UNIQUE,
+         ),
+       )
+ 
+@@ -70,7 +70,7 @@ describe('shareText', () => {
+       expect(shareText(autoPicked())).toBe(
+         "Rollin' Down To Memphis - Remastered 2015 — Marlow Vance\n\n" +
+           'Apple Music: https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329\n' +
+-          `Spotify: ${UNIQUE_LINK}\n` +
++          `Spotify: ${UNIQUE.link}\n` +
+           "YouTube Music: https://music.youtube.com/search?q=Rollin'%20Down%20To%20Memphis%20-%20Remastered%202015%20Marlow%20Vance",
+       )
+     })
+diff --git a/tests/support/cases.ts b/tests/support/cases.ts
+new file mode 100644
+index 0000000..0def369
+--- /dev/null
++++ b/tests/support/cases.ts
+@@ -0,0 +1,169 @@
++import { spotifyOembedUrl } from '../../src/lib/lookup'
++import type { ArtistCandidate, ParsedLink } from '../../src/lib/types'
++import { fixture } from './fixtures'
++import { type FetchAnswer, type JsonpOutcome, answerJson, mockFetchOnly, mockJsonp } from './network'
++
++// Test data shared by more than one level of tests. The values are literals
++// on purpose, so the tests check them rather than echo src/constants.ts.
++
++// The links the tests paste, and what they parse to.
++export const SPOTIFY_TRACK_RAW = 'https://open.spotify.com/intl-de/track/4u7EnebtmKWzUH433cf5Qv?si=abc'
++export const SPOTIFY_TRACK: ParsedLink = {
++  src: 'spotify',
++  kind: 'track',
++  id: '4u7EnebtmKWzUH433cf5Qv',
++  link: 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv',
++}
++export const SPOTIFY_ALBUM: ParsedLink = {
++  src: 'spotify',
++  kind: 'album',
++  id: '1GbtB4zTqAsyfZEsm1RZfx',
++  link: 'https://open.spotify.com/album/1GbtB4zTqAsyfZEsm1RZfx',
++}
++export const SPOTIFY_SHORT: ParsedLink = { src: 'spotify', link: 'https://spotify.link/aBcD1234' }
++export const APPLE_TRACK: ParsedLink = {
++  src: 'apple',
++  kind: 'track',
++  id: '1440806768',
++  slug: 'bohemian rhapsody',
++  link: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
++}
++export const APPLE_ALBUM: ParsedLink = {
++  src: 'apple',
++  kind: 'album',
++  id: '1440806041',
++  slug: 'a night at the opera 2011 remaster',
++  link: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
++}
++
++// The reported case (PLAN-002 AC5–AC7): oEmbed has no artist, and the iTunes
++// title search returns several artists. From spotify-oembed-aint-gettin-high.json
++// and itunes-search-aint-gettin-high.json.
++export const REPORTED: ParsedLink = {
++  src: 'spotify',
++  kind: 'track',
++  id: '1yQDTSOyfVTCt9XWKQcnXb',
++  link: 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb',
++}
++export const REPORTED_TITLE = "Ain't Gettin' High"
++export const REPORTED_THUMB =
++  'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02a1b2c3d4e5f60718293a4b5c'
++// One per artist, in iTunes order.
++export const REPORTED_CANDIDATES: ArtistCandidate[] = [
++  {
++    artist: 'Samuel Cody Matson',
++    title: "Ain't Gettin' High",
++    url: 'https://music.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680',
++  },
++  {
++    artist: 'The Neon Prairie Dogs',
++    title: "Ain't Gettin' High",
++    url: 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571',
++  },
++  {
++    artist: 'Zach Bryan',
++    title: 'Younger Years',
++    url: 'https://music.apple.com/us/album/younger-years/1640014741?i=1640014759',
++  },
++]
++
++// PLAN-004 AC5: a Spotify track with exactly one same-title iTunes artist,
++// Marlow Vance. From spotify-oembed-unique-match.json and
++// itunes-search-unique-match.json.
++export const UNIQUE: ParsedLink = {
++  src: 'spotify',
++  kind: 'track',
++  id: '3kVr8XqPz2LmNw7TyB5hJd',
++  link: 'https://open.spotify.com/track/3kVr8XqPz2LmNw7TyB5hJd',
++}
++export const UNIQUE_TITLE = "Rollin' Down To Memphis - Remastered 2015"
++export const UNIQUE_CANDIDATES: ArtistCandidate[] = [
++  {
++    artist: 'Marlow Vance',
++    title: 'Rollin Down to Memphis',
++    url: 'https://music.apple.com/us/album/rollin-down-to-memphis/1587654321?i=1587654329',
++  },
++  {
++    artist: 'The Dust Bowl Choir',
++    title: "Rollin' Down To Memphis (Live)",
++    url: 'https://music.apple.com/us/album/rollin-down-to-memphis-live/1623456780?i=1623456791',
++  },
++  {
++    artist: 'Harper Lane',
++    title: 'Midnight Ferry',
++    url: 'https://music.apple.com/us/album/midnight-ferry/1645678900?i=1645678912',
++  },
++]
++
++// A conversion's likely record when no platform is likely.
++export const NOTHING_LIKELY = { apple: false, spotify: false, ytm: false }
++
++// The status line's messages.
++export const INVALID_LINK_MESSAGE = 'That link isn’t a Spotify or Apple Music track or album.'
++export const LOOKING_UP_MESSAGE = 'Looking it up…'
++export const SHORT_LINK_MESSAGE =
++  'Couldn’t open that short link. In Spotify, tap Share → Copy link, then paste the full open.spotify.com link.'
++export const NOT_FOUND_MESSAGE = 'Couldn’t find that one. Check the link and try again.'
++
++// The AC7 share text, written out so tests state the format themselves.
++export const expectedShareText = (
++  head: string,
++  links: { apple: string; spotify: string; ytm: string },
++): string =>
++  [
++    head,
++    '',
++    `Apple Music: ${links.apple}`,
++    `Spotify: ${links.spotify}`,
++    `YouTube Music: ${links.ytm}`,
++  ].join('\n')
++
++// Network setups for each case. Each answers only its own requests; any other
++// fetch fails the test (see mockFetchOnly).
++
++// An Apple link: no fetch at all, and the iTunes lookup answers as `itunes` says.
++export function mockAppleCase(itunes: JsonpOutcome = { data: fixture('itunes-lookup-song.json') }) {
++  const fetchMock = mockFetchOnly({})
++  const loads = mockJsonp(() => itunes)
++  return { fetchMock, loads }
++}
++
++// iTunes search answering a JSONP load by its entity: the albums fixture for an
++// album search, the songs fixture otherwise.
++export const answerItunesSearchByEntity = (src: string): JsonpOutcome => ({
++  data: fixture(src.includes('entity=album') ? 'itunes-search-albums.json' : 'itunes-search-songs.json'),
++})
++
++// A Spotify link: oEmbed answers `link` as `oembed` says, and iTunes search
++// answers as `itunes` says (by default, by entity).
++export function mockSpotifyCase(
++  link: string = SPOTIFY_TRACK.link,
++  oembed: FetchAnswer = answerJson(fixture('spotify-oembed-track.json')),
++  itunes: JsonpOutcome | ((src: string) => JsonpOutcome) = answerItunesSearchByEntity,
++) {
++  const fetchMock = mockFetchOnly({ [spotifyOembedUrl(link)]: oembed })
++  const loads = mockJsonp(typeof itunes === 'function' ? itunes : () => itunes)
++  return { fetchMock, loads }
++}
++
++// The reported link: oEmbed answers with the reported response, and iTunes
++// search answers as `itunes` says.
++export function mockReportedCase(
++  itunes: JsonpOutcome = { data: fixture('itunes-search-aint-gettin-high.json') },
++) {
++  const fetchMock = mockFetchOnly({
++    [spotifyOembedUrl(REPORTED.link)]: answerJson(fixture('spotify-oembed-aint-gettin-high.json')),
++  })
++  const loads = mockJsonp(() => itunes)
++  return { fetchMock, loads }
++}
++
++// The unique-match link: oEmbed and iTunes search answer with the
++// unique-match fixtures.
++export function mockUniqueCase() {
++  const fetchMock = mockFetchOnly({
++    [spotifyOembedUrl(UNIQUE.link)]: answerJson(fixture('spotify-oembed-unique-match.json')),
++  })
++  const loads = mockJsonp(() => ({ data: fixture('itunes-search-unique-match.json') }))
++  return { fetchMock, loads }
++}
+diff --git a/tests/support/clipboard.ts b/tests/support/clipboard.ts
+index 331315d..a80f4e9 100644
+--- a/tests/support/clipboard.ts
++++ b/tests/support/clipboard.ts
+@@ -4,8 +4,6 @@ import { vi } from 'vitest'
+ // Stand-ins for the two copy APIs jsdom lacks: navigator.clipboard and
+ // document.execCommand. setup.ts removes both after each test.
+ 
+-// 'ok' resolves, 'blocked' rejects as a denied permission does, 'missing'
+-// leaves navigator.clipboard undefined as an insecure context does.
+ // How long a copy button shows "Copied" or "Copy it below" (AC13: 1.4 s).
+ // A literal on purpose, so the tests check the value rather than echo it.
+ export const RESET_MS = 1400
+@@ -17,19 +15,8 @@ export const FALLBACK_LABEL = 'Text to copy'
+ export const selectedText = (box: HTMLTextAreaElement): string =>
+   box.value.slice(box.selectionStart, box.selectionEnd)
+ 
+-// The AC7 share text, written out so tests state the format themselves.
+-export const expectedShareText = (
+-  head: string,
+-  links: { apple: string; spotify: string; ytm: string },
+-): string =>
+-  [
+-    head,
+-    '',
+-    `Apple Music: ${links.apple}`,
+-    `Spotify: ${links.spotify}`,
+-    `YouTube Music: ${links.ytm}`,
+-  ].join('\n')
+-
++// 'ok' resolves, 'blocked' rejects as a denied permission does, 'missing'
++// leaves navigator.clipboard undefined as an insecure context does.
+ export type ClipboardOutcome = 'ok' | 'blocked' | 'missing'
+ 
+ export function stubClipboard(outcome: ClipboardOutcome) {
+diff --git a/tests/support/network.ts b/tests/support/network.ts
+index d5db85a..3246a41 100644
+--- a/tests/support/network.ts
++++ b/tests/support/network.ts
+@@ -28,14 +28,6 @@ export const jsonResponse = (body: unknown, status = 200): Response =>
+ const requestUrl = (input: RequestInfo | URL): string =>
+   typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+ 
+-// Replaces global fetch. `respond` gets the request URL and returns the
+-// response (or a promise of one, or throws/rejects for a network failure).
+-function mockFetch(respond: (url: string) => Response | Promise<Response>) {
+-  const fn = vi.fn(async (input: RequestInfo | URL) => respond(requestUrl(input)))
+-  vi.stubGlobal('fetch', fn)
+-  return fn
+-}
+-
+ // What a strict fetch stand-in answers for one URL: a response, a promise of
+ // one, or a rejection for a network failure.
+ export type FetchAnswer = () => Response | Promise<Response>
+@@ -44,15 +36,18 @@ let unexpectedFetches: string[] = []
+ 
+ // Replaces global fetch with one that answers only the URLs in `routes`. Any
+ // other request rejects and is recorded, and the test then fails at teardown
+-// (see checkNoUnexpectedFetches), so a request no test asked for, such as one
+-// to Odesli, can't be hidden by a fallback that swallows the rejection.
++// (see checkNoUnexpectedFetches), so a request no test asked for can't be
++// hidden by a fallback that swallows the rejection.
+ export function mockFetchOnly(routes: Record<string, FetchAnswer>) {
+-  return mockFetch((url) => {
++  const fn = vi.fn(async (input: RequestInfo | URL) => {
++    const url = requestUrl(input)
+     const answer = routes[url]
+     if (answer) return answer()
+     unexpectedFetches.push(url)
+     return Promise.reject(new Error(`unexpected fetch ${url}`))
+   })
++  vi.stubGlobal('fetch', fn)
++  return fn
+ }
+ 
+ // Throws, failing the test, when a mockFetchOnly stand-in got a request it
+@@ -72,7 +67,7 @@ export const answerJson =
+ 
+ export const failsToFetch: FetchAnswer = () => Promise.reject(new TypeError('Failed to fetch'))
+ 
+-export const fetchedUrls = (fn: ReturnType<typeof mockFetch>): string[] =>
++export const fetchedUrls = (fn: ReturnType<typeof mockFetchOnly>): string[] =>
+   fn.mock.calls.map(([input]) => requestUrl(input))
+ 
+ // What a JSONP script load does: call the page's callback with data, fail

@@ -1,6 +1,6 @@
 window.TEAM = {
   "project": "crossplay",
-  "updated": "2026-10-25T23:24:36Z",
+  "updated": "2026-11-10T14:21:24Z",
   "plans": [
     {
       "id": "PLAN-001",
@@ -54,6 +54,17 @@ window.TEAM = {
         "plans/PLAN-004/screens/likely-dark.png",
         "plans/PLAN-004/screens/picker-light.png",
         "plans/PLAN-004/screens/picker-dark.png"
+      ]
+    },
+    {
+      "id": "PLAN-005",
+      "title": "Codebase cleanup refactor",
+      "status": "done",
+      "created": "2026-10-27T12:17:11Z",
+      "approved": "2026-10-27T12:36:04Z",
+      "screens": [
+        "plans/PLAN-005/screens/home-light.png",
+        "plans/PLAN-005/screens/home-dark.png"
       ]
     }
   ],
@@ -452,6 +463,90 @@ window.TEAM = {
       "branch": "mr/012-likely-autopick",
       "sets_pattern": true,
       "status": "merged"
+    },
+    {
+      "id": "MR-013",
+      "plan": "PLAN-005",
+      "title": "Retire Odesli-era names; split parse.ts out of links.ts",
+      "branch": "mr/013-parse-split",
+      "size": "standard",
+      "complexity": "medium",
+      "author": "principal",
+      "reviewer": "sr-engineer",
+      "second_reviewer": null,
+      "sets_pattern": true,
+      "stage": "done",
+      "second_round": 0,
+      "routing": null,
+      "status": "merged",
+      "round": 1,
+      "gate_attempts": 1,
+      "blocking": 0,
+      "nits": 0,
+      "findings": {},
+      "screens": [],
+      "needs_user": true,
+      "opened": "2026-10-27T12:36:04Z",
+      "updated": "2026-10-27T12:42:01Z"
+    },
+    {
+      "id": "MR-014",
+      "plan": "PLAN-005",
+      "title": "Move component class names into constants",
+      "branch": "mr/014-class-constants",
+      "size": "standard",
+      "complexity": "low",
+      "author": "engineer",
+      "reviewer": "sr-engineer",
+      "second_reviewer": "principal",
+      "sets_pattern": true,
+      "stage": "done",
+      "second_round": 1,
+      "routing": null,
+      "status": "merged",
+      "round": 1,
+      "gate_attempts": 1,
+      "blocking": 0,
+      "nits": 0,
+      "findings": {},
+      "screens": [
+        "mrs/MR-014/screens/home-light.png",
+        "mrs/MR-014/screens/home-dark.png"
+      ],
+      "needs_user": false,
+      "opened": "2026-10-27T12:36:04Z",
+      "updated": "2026-10-27T12:47:35Z"
+    },
+    {
+      "id": "MR-015",
+      "plan": "PLAN-005",
+      "title": "Consolidate the test suite",
+      "branch": "mr/015-test-consolidation",
+      "size": "standard",
+      "complexity": "medium",
+      "author": "engineer",
+      "reviewer": "sr-engineer",
+      "second_reviewer": "principal",
+      "sets_pattern": true,
+      "stage": "done",
+      "second_round": 1,
+      "routing": null,
+      "status": "merged",
+      "round": 2,
+      "gate_attempts": 1,
+      "blocking": 0,
+      "nits": 3,
+      "findings": {
+        "S17": 1,
+        "AC3": 1,
+        "TEST": 4,
+        "AC6": 1,
+        "ARCH": 2
+      },
+      "screens": [],
+      "needs_user": false,
+      "opened": "2026-10-27T12:36:04Z",
+      "updated": "2026-10-27T14:00:36Z"
     }
   ],
   "events": [
@@ -1210,6 +1305,202 @@ window.TEAM = {
       "actor": "orchestrator",
       "type": "plan",
       "note": "user approved; merged and PR opened"
+    },
+    {
+      "at": "2026-10-27T12:17:11Z",
+      "mr": null,
+      "actor": "orchestrator",
+      "type": "plan-drafted",
+      "note": "PLAN-005 requested from principal"
+    },
+    {
+      "at": "2026-10-27T12:19:48Z",
+      "mr": null,
+      "actor": "principal",
+      "type": "plan-drafted",
+      "note": "PLAN-005 drafted: 3 tasks, awaiting user approval"
+    },
+    {
+      "at": "2026-10-27T12:36:04Z",
+      "mr": null,
+      "actor": "user",
+      "type": "plan-approved",
+      "note": "PLAN-005 approved; HTML attrs inline; PR delivery"
+    },
+    {
+      "at": "2026-10-27T12:39:14Z",
+      "mr": "MR-013",
+      "actor": "qa",
+      "type": "tests-written",
+      "note": "01845f2: parse.test.ts + renames"
+    },
+    {
+      "at": "2026-10-27T12:39:14Z",
+      "mr": "MR-013",
+      "actor": "orchestrator",
+      "type": "red-confirmed",
+      "note": "46 failing, all planned (missing module/export)"
+    },
+    {
+      "at": "2026-10-27T12:41:08Z",
+      "mr": "MR-013",
+      "actor": "principal",
+      "type": "implemented",
+      "note": "008e9b6"
+    },
+    {
+      "at": "2026-10-27T12:41:08Z",
+      "mr": "MR-013",
+      "actor": "orchestrator",
+      "type": "gates-passed",
+      "note": "772 tests, lint, typecheck green"
+    },
+    {
+      "at": "2026-10-27T12:42:01Z",
+      "mr": "MR-013",
+      "actor": "sr-engineer",
+      "type": "review",
+      "note": "approved round 1, 0 blocking"
+    },
+    {
+      "at": "2026-10-27T12:42:01Z",
+      "mr": "MR-013",
+      "actor": "orchestrator",
+      "type": "merged",
+      "note": "merged into team/PLAN-005"
+    },
+    {
+      "at": "2026-10-27T12:43:07Z",
+      "mr": "MR-014",
+      "actor": "qa",
+      "type": "tests-written",
+      "note": "dc8825f: literals.test.ts"
+    },
+    {
+      "at": "2026-10-27T12:43:07Z",
+      "mr": "MR-014",
+      "actor": "orchestrator",
+      "type": "red-confirmed",
+      "note": "18 failing, all planned"
+    },
+    {
+      "at": "2026-10-27T12:45:47Z",
+      "mr": "MR-014",
+      "actor": "engineer",
+      "type": "implemented",
+      "note": "0a06a4c"
+    },
+    {
+      "at": "2026-10-27T12:45:47Z",
+      "mr": "MR-014",
+      "actor": "orchestrator",
+      "type": "gates-passed",
+      "note": "795 tests green; screens byte-identical"
+    },
+    {
+      "at": "2026-10-27T12:46:38Z",
+      "mr": "MR-014",
+      "actor": "sr-engineer",
+      "type": "review",
+      "note": "approved round 1, 0 blocking"
+    },
+    {
+      "at": "2026-10-27T12:47:35Z",
+      "mr": "MR-014",
+      "actor": "principal",
+      "type": "second-review",
+      "note": "approved"
+    },
+    {
+      "at": "2026-10-27T12:47:35Z",
+      "mr": "MR-014",
+      "actor": "orchestrator",
+      "type": "merged",
+      "note": "merged into team/PLAN-005"
+    },
+    {
+      "at": "2026-10-27T13:48:59Z",
+      "mr": "MR-015",
+      "actor": "qa",
+      "type": "tests-written",
+      "note": "11 commits; -5.2% lines, 760 green"
+    },
+    {
+      "at": "2026-10-27T13:48:59Z",
+      "mr": "MR-015",
+      "actor": "user",
+      "type": "settled",
+      "note": "AC7 floor lowered to ~5%"
+    },
+    {
+      "at": "2026-10-27T13:52:00Z",
+      "mr": "MR-015",
+      "actor": "engineer",
+      "type": "implemented",
+      "note": "coverage map verified: 40 deleted, all covered"
+    },
+    {
+      "at": "2026-10-27T13:52:00Z",
+      "mr": "MR-015",
+      "actor": "orchestrator",
+      "type": "gates-passed",
+      "note": "760 green, lint, typecheck"
+    },
+    {
+      "at": "2026-10-27T13:54:47Z",
+      "mr": "MR-015",
+      "actor": "sr-engineer",
+      "type": "review",
+      "note": "changes requested: 1 blocking, 5 nits (test files -> QA)"
+    },
+    {
+      "at": "2026-10-27T13:57:03Z",
+      "mr": "MR-015",
+      "actor": "qa",
+      "type": "response",
+      "note": "B1 + N2-N5 fixed (eba1dbe)"
+    },
+    {
+      "at": "2026-10-27T13:57:03Z",
+      "mr": "MR-015",
+      "actor": "orchestrator",
+      "type": "gates-passed",
+      "note": "round 2 green"
+    },
+    {
+      "at": "2026-10-27T13:57:45Z",
+      "mr": "MR-015",
+      "actor": "sr-engineer",
+      "type": "review",
+      "note": "approved round 2"
+    },
+    {
+      "at": "2026-10-27T14:00:36Z",
+      "mr": "MR-015",
+      "actor": "principal",
+      "type": "second-review",
+      "note": "approved, 3 nits (follow-up)"
+    },
+    {
+      "at": "2026-10-27T14:00:36Z",
+      "mr": "MR-015",
+      "actor": "orchestrator",
+      "type": "merged",
+      "note": "merged into team/PLAN-005"
+    },
+    {
+      "at": "2026-10-27T14:01:09Z",
+      "mr": null,
+      "actor": "orchestrator",
+      "type": "plan",
+      "note": "all MRs merged; awaiting final approval"
+    },
+    {
+      "at": "2026-11-10T14:21:24Z",
+      "mr": null,
+      "actor": "user",
+      "type": "plan-done",
+      "note": "approved; AC3 exempts purity absence check; PR opened"
     }
   ]
 };
