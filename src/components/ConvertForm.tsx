@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { CONVERT_LABEL, INPUT_LABEL, INPUT_PLACEHOLDER } from '../constants'
+import { CONVERT_LABEL, INPUT_LABEL, INPUT_PLACEHOLDER, PRIMARY_BUTTON_CLASS } from '../constants'
 
 type Props = { busy: boolean; initialValue?: string; onConvert(raw: string): void }
 
@@ -28,7 +28,7 @@ export default function ConvertForm({ busy, initialValue, onConvert }: Props) {
         // The paste event fires before the pasted text is in the input.
         onPaste={() => setTimeout(convertInput)}
       />
-      <button className="primary" type="submit" disabled={busy}>
+      <button className={PRIMARY_BUTTON_CLASS} type="submit" disabled={busy}>
         {CONVERT_LABEL}
       </button>
     </form>

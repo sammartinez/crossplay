@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import ConvertForm from '../../src/components/ConvertForm'
+import { SPOTIFY_TRACK } from '../support/cases'
 
 // AC11: the URL input and Convert button.
 
 const PLACEHOLDER = 'https://open.spotify.com/track/…'
-const LINK = 'https://open.spotify.com/track/4u7EnebtmKWzUH433cf5Qv'
+const LINK = SPOTIFY_TRACK.link
 
 const input = () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLInputElement
 const convertButton = () => screen.getByRole('button', { name: 'Convert' })

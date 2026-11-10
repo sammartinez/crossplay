@@ -12,7 +12,8 @@ import {
   STATUS_IDLE,
 } from '../constants'
 import { lookupLink } from '../lib/api'
-import { parseLink, withArtistChoice } from '../lib/links'
+import { withArtistChoice } from '../lib/links'
+import { parseLink } from '../lib/parse'
 import type { ArtistCandidate, Conversion, ParsedLink } from '../lib/types'
 import { withParams } from '../lib/url'
 

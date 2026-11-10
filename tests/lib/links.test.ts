@@ -1,161 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  canonicalSpotifyLink,
-  parseLink,
   searchQuery,
   searchUrl,
   spotifyAppSearchUri,
   withArtistChoice,
   withSearchFallbacks,
 } from '../../src/lib/links'
-import type { ArtistCandidate, Lookup } from '../../src/lib/types'
-
-const TRACK_ID = '4u7EnebtmKWzUH433cf5Qv'
-const ALBUM_ID = '1GbtB4zTqAsyfZEsm1RZfx'
-
-describe('parseLink', () => {
-  it('returns null for text that is not a URL', () => {
-    expect(parseLink('bohemian rhapsody')).toBeNull()
-  })
-
-  it('returns null for an empty string', () => {
-    expect(parseLink('')).toBeNull()
-  })
-
-  it('returns null for whitespace only', () => {
-    expect(parseLink('   ')).toBeNull()
-  })
-
-  it('trims surrounding whitespace before parsing', () => {
-    expect(parseLink(`  https://open.spotify.com/track/${TRACK_ID}\n`)).toEqual({
-      src: 'spotify',
-      kind: 'track',
-      id: TRACK_ID,
-      link: `https://open.spotify.com/track/${TRACK_ID}`,
-    })
-  })
-
-  it('turns a Spotify track link into a canonical link without the query string', () => {
-    expect(parseLink(`https://open.spotify.com/track/${TRACK_ID}?si=8a1f2b3c4d5e6f70`)).toEqual({
-      src: 'spotify',
-      kind: 'track',
-      id: TRACK_ID,
-      link: `https://open.spotify.com/track/${TRACK_ID}`,
-    })
-  })
-
-  it('turns a Spotify album link into a canonical album link', () => {
-    expect(parseLink(`https://open.spotify.com/album/${ALBUM_ID}?si=abc`)).toEqual({
-      src: 'spotify',
-      kind: 'album',
-      id: ALBUM_ID,
-      link: `https://open.spotify.com/album/${ALBUM_ID}`,
-    })
-  })
-
-  it('drops a locale segment from a Spotify link', () => {
-    expect(parseLink(`https://open.spotify.com/intl-de/track/${TRACK_ID}?si=x`)).toEqual({
-      src: 'spotify',
-      kind: 'track',
-      id: TRACK_ID,
-      link: `https://open.spotify.com/track/${TRACK_ID}`,
-    })
-  })
-
-  it('canonicalizes a link from another spotify.com subdomain to open.spotify.com', () => {
-    expect(parseLink(`https://play.spotify.com/track/${TRACK_ID}`)).toEqual({
-      src: 'spotify',
-      kind: 'track',
-      id: TRACK_ID,
-      link: `https://open.spotify.com/track/${TRACK_ID}`,
-    })
-  })
-
-  it('returns a spotify.link short link as-is with no kind or id', () => {
-    const parsed = parseLink('https://spotify.link/AbCdEf12345')
-    expect(parsed).toEqual({ src: 'spotify', link: 'https://spotify.link/AbCdEf12345' })
-    expect(parsed?.kind).toBeUndefined()
-    expect(parsed?.id).toBeUndefined()
-  })
-
-  it('returns null for a Spotify playlist link', () => {
-    expect(parseLink('https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M')).toBeNull()
-  })
-
-  it('returns null for a Spotify artist link', () => {
-    expect(parseLink('https://open.spotify.com/artist/1dfeR4HaWDbWqFHLkxsg1d')).toBeNull()
-  })
-
-  it('returns null for a host that only ends in "spotify.com"', () => {
-    expect(parseLink(`https://notspotify.com/track/${TRACK_ID}`)).toBeNull()
-  })
-
-  it('parses an Apple album link with ?i= as a track identified by the i param', () => {
-    expect(
-      parseLink('https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768'),
-    ).toEqual({
-      src: 'apple',
-      kind: 'track',
-      id: '1440806768',
-      slug: 'bohemian rhapsody',
-      link: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
-    })
-  })
-
-  it('keeps only the i param in an Apple track link', () => {
-    expect(
-      parseLink(
-        'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768&uo=4&ls=1',
-      )?.link,
-    ).toBe('https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768')
-  })
-
-  it('parses an Apple /song/ link as a track identified by the last path segment', () => {
-    expect(parseLink('https://music.apple.com/us/song/bohemian-rhapsody/1440806768')).toEqual({
-      src: 'apple',
-      kind: 'track',
-      id: '1440806768',
-      slug: 'bohemian rhapsody',
-      link: 'https://music.apple.com/us/song/bohemian-rhapsody/1440806768',
-    })
-  })
-
-  it('parses an Apple album link as an album and drops its query string', () => {
-    expect(
-      parseLink('https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041?ls=1'),
-    ).toEqual({
-      src: 'apple',
-      kind: 'album',
-      id: '1440806041',
-      slug: 'a night at the opera 2011 remaster',
-      link: 'https://music.apple.com/us/album/a-night-at-the-opera-2011-remaster/1440806041',
-    })
-  })
-
-  it('returns null for an Apple artist link', () => {
-    expect(parseLink('https://music.apple.com/us/artist/queen/3296287')).toBeNull()
-  })
-
-  it('returns null for an Apple link on a host other than music.apple.com', () => {
-    expect(
-      parseLink('https://itunes.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768'),
-    ).toBeNull()
-  })
-
-  it('returns null for an unrelated host', () => {
-    expect(parseLink('https://music.youtube.com/watch?v=fJ9rUzIMcZQ')).toBeNull()
-  })
-})
-
-describe('canonicalSpotifyLink', () => {
-  it('builds an open.spotify.com track link', () => {
-    expect(canonicalSpotifyLink('track', TRACK_ID)).toBe(`https://open.spotify.com/track/${TRACK_ID}`)
-  })
-
-  it('builds an open.spotify.com album link', () => {
-    expect(canonicalSpotifyLink('album', ALBUM_ID)).toBe(`https://open.spotify.com/album/${ALBUM_ID}`)
-  })
-})
+import type { Lookup } from '../../src/lib/types'
+import { APPLE_TRACK, REPORTED, REPORTED_CANDIDATES, REPORTED_THUMB, SPOTIFY_TRACK } from '../support/cases'
 
 describe('searchUrl', () => {
   it('builds a Spotify search URL with the query URI-encoded', () => {
@@ -223,8 +75,8 @@ describe('spotifyAppSearchUri', () => {
 
 describe('withSearchFallbacks', () => {
   const exactLinks = {
-    apple: 'https://music.apple.com/us/album/bohemian-rhapsody/1440806041?i=1440806768',
-    spotify: `https://open.spotify.com/track/${TRACK_ID}`,
+    apple: APPLE_TRACK.link,
+    spotify: SPOTIFY_TRACK.link,
     ytm: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
   }
 
@@ -401,55 +253,36 @@ describe('withSearchFallbacks', () => {
 })
 
 describe('withArtistChoice', () => {
-  // The reported Spotify fallback: no artist, Spotify exact, Apple and
+  // The reported Spotify result: no artist, Spotify exact, Apple and
   // YouTube Music searches for the title alone.
-  const SPOTIFY_LINK = 'https://open.spotify.com/track/1yQDTSOyfVTCt9XWKQcnXb'
-  const ART = 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02a1b2c3d4e5f60718293a4b5c'
-  const CANDIDATES: ArtistCandidate[] = [
-    {
-      artist: 'Samuel Cody Matson',
-      title: "Ain't Gettin' High",
-      url: 'https://music.apple.com/us/album/aint-gettin-high/1712345678?i=1712345680',
-    },
-    {
-      artist: 'The Neon Prairie Dogs',
-      title: "Ain't Gettin' High",
-      url: 'https://music.apple.com/us/album/aint-gettin-high/1601234567?i=1601234571',
-    },
-    {
-      artist: 'Zach Bryan',
-      title: 'Younger Years',
-      url: 'https://music.apple.com/us/album/younger-years/1640014741?i=1640014759',
-    },
-  ]
-  const [MATSON, NEON] = CANDIDATES
-  const fallback = () =>
+  const [MATSON, NEON] = REPORTED_CANDIDATES
+  const reported = () =>
     withSearchFallbacks({
       title: "Ain't Gettin' High",
       artist: '',
-      art: ART,
-      links: { spotify: SPOTIFY_LINK },
-      candidates: CANDIDATES,
+      art: REPORTED_THUMB,
+      links: { spotify: REPORTED.link },
+      candidates: REPORTED_CANDIDATES,
     })
 
   it("sets the artist to the candidate's artist", () => {
-    expect(withArtistChoice(fallback(), NEON).artist).toBe('The Neon Prairie Dogs')
+    expect(withArtistChoice(reported(), NEON).artist).toBe('The Neon Prairie Dogs')
   })
 
   it("makes the candidate's URL the Apple link and marks it exact", () => {
-    const result = withArtistChoice(fallback(), NEON)
+    const result = withArtistChoice(reported(), NEON)
     expect(result.links.apple).toBe(NEON.url)
     expect(result.exact.apple).toBe(true)
   })
 
   it('keeps the exact Spotify link', () => {
-    const result = withArtistChoice(fallback(), NEON)
-    expect(result.links.spotify).toBe(SPOTIFY_LINK)
+    const result = withArtistChoice(reported(), NEON)
+    expect(result.links.spotify).toBe(REPORTED.link)
     expect(result.exact.spotify).toBe(true)
   })
 
   it('rebuilds the YouTube Music search for "title artist" and keeps it not exact', () => {
-    const result = withArtistChoice(fallback(), NEON)
+    const result = withArtistChoice(reported(), NEON)
     expect(result.links.ytm).toBe(
       "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20The%20Neon%20Prairie%20Dogs",
     )
@@ -457,7 +290,7 @@ describe('withArtistChoice', () => {
   })
 
   it('leaves the Spotify app search URI undefined because Spotify stays exact', () => {
-    const result = withArtistChoice(fallback(), NEON)
+    const result = withArtistChoice(reported(), NEON)
     expect(result.spotifyAppSearch).toBeUndefined()
   })
 
@@ -468,7 +301,7 @@ describe('withArtistChoice', () => {
         title: "Ain't Gettin' High",
         artist: '',
         links: { ytm: 'https://music.youtube.com/watch?v=abc' },
-        candidates: CANDIDATES,
+        candidates: REPORTED_CANDIDATES,
       })
 
     it('rebuilds the Spotify app search URI with the chosen artist', () => {
@@ -500,8 +333,8 @@ describe('withArtistChoice', () => {
     const conversion = withSearchFallbacks({
       title: 'Song',
       artist: '',
-      links: { spotify: SPOTIFY_LINK, ytm: 'https://music.youtube.com/watch?v=abc' },
-      candidates: CANDIDATES,
+      links: { spotify: REPORTED.link, ytm: 'https://music.youtube.com/watch?v=abc' },
+      candidates: REPORTED_CANDIDATES,
     })
     const result = withArtistChoice(conversion, NEON)
     expect(result.links.ytm).toBe('https://music.youtube.com/watch?v=abc')
@@ -509,25 +342,25 @@ describe('withArtistChoice', () => {
   })
 
   it('keeps the title, artwork and candidates in the same order', () => {
-    const result = withArtistChoice(fallback(), NEON)
+    const result = withArtistChoice(reported(), NEON)
     expect(result.title).toBe("Ain't Gettin' High")
-    expect(result.art).toBe(ART)
-    expect(result.candidates).toEqual(CANDIDATES)
+    expect(result.art).toBe(REPORTED_THUMB)
+    expect(result.candidates).toEqual(REPORTED_CANDIDATES)
   })
 
   it('switches every chosen value when a second candidate is chosen', () => {
-    const result = withArtistChoice(withArtistChoice(fallback(), NEON), MATSON)
+    const result = withArtistChoice(withArtistChoice(reported(), NEON), MATSON)
     expect(result.artist).toBe('Samuel Cody Matson')
     expect(result.links.apple).toBe(MATSON.url)
     expect(result.exact.apple).toBe(true)
     expect(result.links.ytm).toBe(
       "https://music.youtube.com/search?q=Ain't%20Gettin'%20High%20Samuel%20Cody%20Matson",
     )
-    expect(result.candidates).toEqual(CANDIDATES)
+    expect(result.candidates).toEqual(REPORTED_CANDIDATES)
   })
 
   it('returns a new conversion and does not mutate the one it is given', () => {
-    const conversion = fallback()
+    const conversion = reported()
     const before = structuredClone(conversion)
     const result = withArtistChoice(conversion, NEON)
     expect(conversion).toEqual(before)
@@ -541,9 +374,9 @@ describe('withArtistChoice', () => {
       withSearchFallbacks({
         title: "Ain't Gettin' High",
         artist: NEON.artist,
-        art: ART,
-        links: { spotify: SPOTIFY_LINK, apple: NEON.url },
-        candidates: CANDIDATES,
+        art: REPORTED_THUMB,
+        links: { spotify: REPORTED.link, apple: NEON.url },
+        candidates: REPORTED_CANDIDATES,
         likely: { apple: true },
       })
 
@@ -579,7 +412,7 @@ describe('withArtistChoice', () => {
 
     it('keeps the exact Spotify link', () => {
       const result = withArtistChoice(autoPicked(), MATSON)
-      expect(result.links.spotify).toBe(SPOTIFY_LINK)
+      expect(result.links.spotify).toBe(REPORTED.link)
       expect(result.exact.spotify).toBe(true)
     })
 
@@ -591,6 +424,6 @@ describe('withArtistChoice', () => {
   })
 
   it('marks nothing likely after a choice from a result with no auto-pick', () => {
-    expect(withArtistChoice(fallback(), NEON).likely).toEqual({ apple: false, spotify: false, ytm: false })
+    expect(withArtistChoice(reported(), NEON).likely).toEqual({ apple: false, spotify: false, ytm: false })
   })
 })

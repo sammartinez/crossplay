@@ -28,14 +28,6 @@ export const jsonResponse = (body: unknown, status = 200): Response =>
 const requestUrl = (input: RequestInfo | URL): string =>
   typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
 
-// Replaces global fetch. `respond` gets the request URL and returns the
-// response (or a promise of one, or throws/rejects for a network failure).
-function mockFetch(respond: (url: string) => Response | Promise<Response>) {
-  const fn = vi.fn(async (input: RequestInfo | URL) => respond(requestUrl(input)))
-  vi.stubGlobal('fetch', fn)
-  return fn
-}
-
 // What a strict fetch stand-in answers for one URL: a response, a promise of
 // one, or a rejection for a network failure.
 export type FetchAnswer = () => Response | Promise<Response>
@@ -44,15 +36,18 @@ let unexpectedFetches: string[] = []
 
 // Replaces global fetch with one that answers only the URLs in `routes`. Any
 // other request rejects and is recorded, and the test then fails at teardown
-// (see checkNoUnexpectedFetches), so a request no test asked for, such as one
-// to Odesli, can't be hidden by a fallback that swallows the rejection.
+// (see checkNoUnexpectedFetches), so a request no test asked for can't be
+// hidden by a fallback that swallows the rejection.
 export function mockFetchOnly(routes: Record<string, FetchAnswer>) {
-  return mockFetch((url) => {
+  const fn = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestUrl(input)
     const answer = routes[url]
     if (answer) return answer()
     unexpectedFetches.push(url)
     return Promise.reject(new Error(`unexpected fetch ${url}`))
   })
+  vi.stubGlobal('fetch', fn)
+  return fn
 }
 
 // Throws, failing the test, when a mockFetchOnly stand-in got a request it
@@ -72,7 +67,7 @@ export const answerJson =
 
 export const failsToFetch: FetchAnswer = () => Promise.reject(new TypeError('Failed to fetch'))
 
-export const fetchedUrls = (fn: ReturnType<typeof mockFetch>): string[] =>
+export const fetchedUrls = (fn: ReturnType<typeof mockFetchOnly>): string[] =>
   fn.mock.calls.map(([input]) => requestUrl(input))
 
 // What a JSONP script load does: call the page's callback with data, fail

@@ -9,7 +9,7 @@ import {
 import { withSearchFallbacks } from './links'
 import {
   fromItunesLookup,
-  fromSpotifyFallback,
+  fromSpotifyOembed,
   itunesLookupUrl,
   itunesSearchUrl,
   resolveSpotifyShortLink,
@@ -67,15 +67,12 @@ async function viaSpotify(parsed: ParsedLink): Promise<SourceLookup> {
   // A blank title has nothing to search for, so it ends as not found.
   if (!oembed.title?.trim()) return { lookup: null, parsed: resolved }
   const itunes = await itunesOrNothing(itunesSearchUrl(oembed.title, resolved.kind))
-  return { lookup: fromSpotifyFallback(oembed, itunes, resolved), parsed: resolved }
+  return { lookup: fromSpotifyOembed(oembed, itunes, resolved), parsed: resolved }
 }
 
-async function viaSource(parsed: ParsedLink): Promise<SourceLookup> {
-  if (parsed.src === PLATFORM_APPLE) {
-    const itunes = await itunesOrNothing(itunesLookupUrl(parsed))
-    return { lookup: fromItunesLookup(itunes, parsed), parsed }
-  }
-  return viaSpotify(parsed).catch(() => ({ lookup: null, parsed }))
+async function viaApple(parsed: ParsedLink): Promise<SourceLookup> {
+  const itunes = await itunesOrNothing(itunesLookupUrl(parsed))
+  return { lookup: fromItunesLookup(itunes, parsed), parsed }
 }
 
 // Resolves on every lookup failure, with a null conversion, so callers need
@@ -83,7 +80,8 @@ async function viaSource(parsed: ParsedLink): Promise<SourceLookup> {
 export async function lookupLink(
   parsed: ParsedLink,
 ): Promise<{ conversion: Conversion | null; parsed: ParsedLink }> {
-  const found = await viaSource(parsed)
+  const via = parsed.src === PLATFORM_APPLE ? viaApple : viaSpotify
+  const found = await via(parsed).catch(() => ({ lookup: null, parsed }))
   return {
     conversion: found.lookup?.title ? withSearchFallbacks(found.lookup) : null,
     parsed: found.parsed,
